@@ -43,18 +43,35 @@ export default function Members() {
   const [showPayModal, setShowPayModal] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(null)
   const [stats, setStats] = useState({ total: 0, active: 0, feeDue: 0, newThisMonth: 0 })
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 50
 
   const isAdmin = userRole?.role === 'admin'
   const isCashier = ['admin', 'cashier'].includes(userRole?.role)
 
-  useEffect(() => { if (currentOrg) fetchMembers() }, [currentOrg, filterStatus])
+  useEffect(() => { if (currentOrg) { setPage(0); fetchMembers(0) } }, [currentOrg, filterStatus])
+  useEffect(() => { if (currentOrg) fetchMembers(page) }, [page])
 
-  async function fetchMembers() {
+  async function fetchMembers(pageNum = 0) {
     setLoading(true)
+    
+    // Get accurate counts using count queries
+    const [
+      { count: totalCount },
+      { count: activeCount },
+      { count: feeDueCount },
+    ] = await Promise.all([
+      supabase.from('dcba_members').select('*', { count: 'exact', head: true }).eq('org_id', currentOrg.id),
+      supabase.from('dcba_members').select('*', { count: 'exact', head: true }).eq('org_id', currentOrg.id).eq('status', 'active'),
+      supabase.from('dcba_members').select('*', { count: 'exact', head: true }).eq('org_id', currentOrg.id).gt('outstanding_fees', 0),
+    ])
+
+    // Fetch paginated data
     let query = supabase.from('dcba_members')
       .select('*')
       .eq('org_id', currentOrg.id)
       .order('member_no')
+      .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1)
 
     if (filterStatus === 'active') query = query.eq('status', 'active')
     if (filterStatus === 'inactive') query = query.eq('status', 'inactive')
@@ -63,17 +80,12 @@ export default function Members() {
     const { data } = await query
     setMembers(data || [])
 
-    // Stats
-    const all = data || []
     const thisMonth = new Date()
     setStats({
-      total: all.length,
-      active: all.filter(m => m.status === 'active').length,
-      feeDue: all.filter(m => Number(m.outstanding_fees) > 0).length,
-      newThisMonth: all.filter(m => {
-        const d = new Date(m.created_at)
-        return d.getMonth() === thisMonth.getMonth() && d.getFullYear() === thisMonth.getFullYear()
-      }).length,
+      total: totalCount || 0,
+      active: activeCount || 0,
+      feeDue: feeDueCount || 0,
+      newThisMonth: 0,
     })
     setLoading(false)
   }
@@ -85,6 +97,20 @@ export default function Members() {
     m.enrollment_no?.toLowerCase().includes(search.toLowerCase()) ||
     m.mobile?.includes(search)
   )
+
+  async function handleSearch(q) {
+    setSearch(q)
+    if (q.length < 2) { fetchMembers(0); return }
+    setLoading(true)
+    const { data } = await supabase.from('dcba_members')
+      .select('*')
+      .eq('org_id', currentOrg.id)
+      .or(`member_name.ilike.%${q}%,member_no.ilike.%${q}%,enrollment_no.ilike.%${q}%,mobile.ilike.%${q}%`)
+      .order('member_no')
+      .limit(100)
+    setMembers(data || [])
+    setLoading(false)
+  }
 
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
 
@@ -133,7 +159,7 @@ export default function Members() {
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
             <input className="input pl-9" placeholder="Search by name, member no, enrollment no, mobile..."
-              value={search} onChange={e => setSearch(e.target.value)} />
+              value={search} onChange={e => handleSearch(e.target.value)} />
           </div>
           <div className="flex gap-2 flex-wrap">
             {[
@@ -148,7 +174,7 @@ export default function Members() {
               </button>
             ))}
           </div>
-          <span className="text-sm text-gray-500">{filtered.length} members</span>
+          <span className="text-sm text-gray-500">{stats.total.toLocaleString('en-IN')} members</span>
         </div>
       </div>
 
@@ -166,9 +192,9 @@ export default function Members() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={9} className="table-cell text-center py-8 text-gray-400">Loading...</td></tr>
-              ) : filtered.length === 0 ? (
+              ) : members.length === 0 ? (
                 <tr><td colSpan={9} className="table-cell text-center py-8 text-gray-400">No members found</td></tr>
-              ) : filtered.map((m, i) => {
+              ) : members.map((m, i) => {
                 const anniv = getAnniversaryStatus(m.membership_date)
                 const hasOutstanding = Number(m.outstanding_fees) > 0
                 return (
@@ -218,9 +244,29 @@ export default function Members() {
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* ADD MEMBER MODAL */}
+        {/* Pagination */}
+        {!search && (
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+            <p className="text-sm text-gray-500">
+              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, stats.total)} of <strong>{stats.total.toLocaleString('en-IN')}</strong> members
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-100">
+                ← Prev
+              </button>
+              <span className="px-3 py-1.5 text-sm font-medium bg-blue-700 text-white rounded-lg">
+                {page + 1} / {Math.ceil(stats.total / PAGE_SIZE)}
+              </span>
+              <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= stats.total}
+                className="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-40 hover:bg-gray-100">
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       {showAddModal && (
         <AddMemberModal
           org={currentOrg}

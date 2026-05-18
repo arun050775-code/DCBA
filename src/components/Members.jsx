@@ -197,12 +197,26 @@ export default function Members() {
               ) : members.map((m, i) => {
                 const anniv = getAnniversaryStatus(m.membership_date)
                 const hasOutstanding = Number(m.outstanding_fees) > 0
+                const photoUrl = `https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/member-photos/${m.member_no}.png`
                 return (
                   <tr key={m.id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${hasOutstanding ? 'border-l-4 border-l-red-400' : ''}`}>
                     <td className="table-cell font-mono font-bold text-blue-700 text-sm">{m.member_no}</td>
                     <td className="table-cell">
-                      <div className="font-medium text-sm">{m.member_name}</div>
-                      <div className="text-xs text-gray-400">{m.father_name ? `S/W/D of ${m.father_name}` : ''}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
+                          <img src={photoUrl} alt={m.member_name}
+                            className="w-full h-full object-cover"
+                            onError={e => {
+                              e.target.style.display = 'none'
+                              e.target.parentElement.innerHTML = `<div style="width:100%;height:100%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;color:#f5c842;font-weight:700;font-size:0.7rem">${m.member_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm">{m.member_name}</div>
+                          <div className="text-xs text-gray-400">{m.father_name ? `S/W/D of ${m.father_name}` : ''}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="table-cell font-mono text-xs">{m.enrollment_no || '—'}</td>
                     <td className="table-cell text-sm">{m.mobile || '—'}</td>
@@ -645,7 +659,23 @@ function MemberDetailModal({ member, onClose, org }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
-          <h3 className="text-lg font-semibold">{member.member_no} — {member.member_name}</h3>
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-yellow-500 flex-shrink-0">
+              <img
+                src={`https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/member-photos/${member.member_no}.png`}
+                alt={member.member_name}
+                className="w-full h-full object-cover"
+                onError={e => {
+                  e.target.style.display = 'none'
+                  e.target.parentElement.innerHTML = `<div style="width:100%;height:100%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;color:#f5c842;font-weight:700;font-size:1rem">${member.member_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`
+                }}
+              />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">{member.member_no}</h3>
+              <p className="text-sm text-gray-600">{member.member_name}</p>
+            </div>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
         </div>
 

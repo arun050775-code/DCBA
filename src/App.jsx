@@ -4,6 +4,9 @@ import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import Members from './components/Members'
+import Grievances from './components/Grievances'
+import Applications from './components/Applications'
+import MemberOnboarding from './components/MemberOnboarding'
 import ChartOfAccounts from './components/ChartOfAccounts'
 import UserManagement from './components/UserManagement'
 import RentTracker from './components/RentTracker'
@@ -44,6 +47,8 @@ function PrivateLayout() {
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/members" element={<Members />} />
+          <Route path="/grievances" element={<Grievances />} />
+          <Route path="/applications" element={<Applications />} />
           <Route path="/rent" element={<RentTracker />} />
           <Route path="/cash-bank" element={<CashBank />} />
           <Route path="/income" element={<IncomeRegister />} />
@@ -71,6 +76,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/apply" element={<MemberOnboarding />} />
       <Route path="/*" element={<PrivateLayout />} />
     </Routes>
   )
@@ -83,3 +89,4 @@ export default function App() {
     </AuthProvider>
   )
 }
+

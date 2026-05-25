@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { Bell, Plus, Eye, Pin, Trash2, Search, FileText, AlertTriangle, Calendar, Megaphone } from 'lucide-react'
+import { Bell, Plus, Eye, Pin, Trash2, Search, FileText, AlertTriangle, Calendar, Megaphone, Upload, Paperclip } from 'lucide-react'
 
 const CATEGORIES = [
   { id: 'general', label: 'General', color: 'bg-blue-100 text-blue-700', icon: Bell },
@@ -199,6 +199,11 @@ function NoticeCard({ notice: n, isAdmin, onView, onPin, onDelete }) {
               <span>{formatDate(n.created_at)}</span>
               {n.expiry_date && <span>Expires: {formatDate(n.expiry_date)}</span>}
               {n.posted_by_name && <span>By: {n.posted_by_name}</span>}
+              {n.attachment_url && (
+                <span className="flex items-center gap-1 text-blue-500">
+                  <Paperclip className="w-3 h-3" /> Attachment
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -228,6 +233,7 @@ function AddNoticeModal({ org, userRole, onClose, onSuccess }) {
     expiry_date: '',
     is_pinned: false,
   })
+  const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
@@ -236,6 +242,26 @@ function AddNoticeModal({ org, userRole, onClose, onSuccess }) {
 
     setSaving(true)
     try {
+      let attachment_url = null
+      let attachment_name = null
+      let attachment_type = null
+
+      // Upload attachment if any
+      if (file) {
+        const ext = file.name.split('.').pop()
+        const filename = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`
+        const { error: uploadErr } = await supabase.storage
+          .from('notice-attachments')
+          .upload(filename, file, { upsert: true })
+        if (uploadErr) throw uploadErr
+        const { data: urlData } = supabase.storage
+          .from('notice-attachments')
+          .getPublicUrl(filename)
+        attachment_url = urlData.publicUrl
+        attachment_name = file.name
+        attachment_type = ext.toLowerCase()
+      }
+
       const { error } = await supabase.from('notices').insert({
         org_id: org.id,
         title: form.title,
@@ -245,6 +271,9 @@ function AddNoticeModal({ org, userRole, onClose, onSuccess }) {
         is_pinned: form.is_pinned,
         posted_by: userRole?.user_id,
         posted_by_name: userRole?.name,
+        attachment_url,
+        attachment_name,
+        attachment_type,
       })
       if (error) throw error
       toast.success('Notice posted!')
@@ -304,6 +333,32 @@ function AddNoticeModal({ org, userRole, onClose, onSuccess }) {
               onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
           </div>
 
+          {/* Attachment */}
+          <div>
+            <label className="label">Attachment <span className="text-gray-400 font-normal">(PDF, JPG, PNG — optional)</span></label>
+            <div className={`border-2 border-dashed rounded-xl p-4 transition-colors ${file ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-50'}`}>
+              {file ? (
+                <div className="flex items-center gap-3">
+                  <Paperclip className="w-5 h-5 text-green-600" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-green-800">{file.name}</p>
+                    <p className="text-xs text-green-600">{(file.size/1024).toFixed(1)} KB</p>
+                  </div>
+                  <button onClick={() => setFile(null)}
+                    className="text-red-500 text-xs hover:underline">Remove</button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 cursor-pointer">
+                  <Upload className="w-8 h-8 text-gray-400" />
+                  <p className="text-sm text-gray-500">Click to upload PDF, JPG or PNG</p>
+                  <p className="text-xs text-gray-400">Max 5MB</p>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={e => setFile(e.target.files[0] || null)} />
+                </label>
+              )}
+            </div>
+          </div>
+
           <label className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 cursor-pointer">
             <input type="checkbox" checked={form.is_pinned}
               onChange={e => setForm({ ...form, is_pinned: e.target.checked })}
@@ -355,6 +410,21 @@ function NoticeDetailModal({ notice: n, isAdmin, onClose, onPin }) {
           <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
             {n.content}
           </div>
+
+          {/* Attachment */}
+          {n.attachment_url && (
+            <a href={n.attachment_url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3 hover:bg-blue-100 transition-colors">
+              <Paperclip className="w-5 h-5 text-blue-600 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-800">{n.attachment_name || 'Attachment'}</p>
+                <p className="text-xs text-blue-500">Click to view/download</p>
+              </div>
+              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-medium uppercase">
+                {n.attachment_type || 'file'}
+              </span>
+            </a>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t flex gap-3 justify-end">

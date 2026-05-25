@@ -7,6 +7,7 @@ import Members from './components/Members'
 import Grievances from './components/Grievances'
 import Applications from './components/Applications'
 import MemberOnboarding from './components/MemberOnboarding'
+import NoticeBoard from './components/NoticeBoard'
 import ChartOfAccounts from './components/ChartOfAccounts'
 import UserManagement from './components/UserManagement'
 import RentTracker from './components/RentTracker'
@@ -48,6 +49,7 @@ function PrivateLayout() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/members" element={<Members />} />
           <Route path="/grievances" element={<Grievances />} />
+          <Route path="/notices" element={<NoticeBoard />} />
           <Route path="/applications" element={<Applications />} />
           <Route path="/rent" element={<RentTracker />} />
           <Route path="/cash-bank" element={<CashBank />} />

@@ -36,16 +36,17 @@ export default function Dashboard() {
   async function fetchStats() {
     setLoading(true)
     try {
-      const [{ data: vendors }, { data: members }, { data: recent }] = await Promise.all([
+      const [{ data: vendors }, { count: memberCount }, { data: feeData }, { data: recent }] = await Promise.all([
         supabase.from('vendors').select('monthly_rent').eq('org_id', currentOrg.id).eq('status', 'active'),
+        supabase.from('dcba_members').select('*', { count: 'exact', head: true }).eq('org_id', currentOrg.id).eq('status', 'active'),
         supabase.from('dcba_members').select('outstanding_fees').eq('org_id', currentOrg.id).eq('status', 'active'),
         supabase.from('rent_collections').select('*, vendors(name)').eq('org_id', currentOrg.id).order('created_at', { ascending: false }).limit(5),
       ])
       setStats({
         vendors: vendors?.length || 0,
         totalRent: vendors?.reduce((s, v) => s + (v.monthly_rent || 0), 0) || 0,
-        members: members?.length || 0,
-        feeOutstanding: members?.reduce((s, m) => s + Number(m.outstanding_fees || 0), 0) || 0,
+        members: memberCount || 0,
+        feeOutstanding: feeData?.reduce((s, m) => s + Number(m.outstanding_fees || 0), 0) || 0,
       })
       setRecentCollections(recent || [])
     } catch (err) { console.error(err) }

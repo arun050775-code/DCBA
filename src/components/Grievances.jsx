@@ -557,6 +557,3 @@ function GrievanceDetailModal({ grievance: g, org, userRole, isAdmin, onClose, o
     </div>
   )
 }
-
-  )
-}

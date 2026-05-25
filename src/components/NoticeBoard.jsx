@@ -286,15 +286,15 @@ function AddNoticeModal({ org, userRole, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50 flex-shrink-0">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Bell className="w-5 h-5 text-blue-700" /> Post Notice
           </h3>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
         </div>
 
-        <div className="px-6 py-4 space-y-4">
+        <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
           {/* Category */}
           <div>
             <label className="label">Category</label>
@@ -370,7 +370,7 @@ function AddNoticeModal({ org, userRole, onClose, onSuccess }) {
           </label>
         </div>
 
-        <div className="px-6 py-4 border-t flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t flex gap-3 justify-end flex-shrink-0">
           <button onClick={onClose} className="btn-secondary">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
             <Bell className="w-4 h-4" />

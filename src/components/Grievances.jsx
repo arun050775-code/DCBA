@@ -552,11 +552,7 @@ function GrievanceDetailModal({ grievance: g, org, userRole, isAdmin, onClose, o
               </button>
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  )
-}
+        
 
       </div>
     </div>

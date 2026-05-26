@@ -526,7 +526,6 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
         payment_mode: form.payment_mode,
         cash_account_id: cashId,
         bank_account_id: bankId,
-        remarks: form.remarks || null,
       })
       if (incErr) throw incErr
 

@@ -514,15 +514,18 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     if (totalToPay <= 0) return toast.error('Select at least one fee to collect')
     setSaving(true)
     try {
-      // Record income entry
+      // Record income entry — handle empty account IDs
+      const cashId = form.payment_mode === 'cash' && form.cash_account_id ? form.cash_account_id : null
+      const bankId = form.payment_mode !== 'cash' && form.bank_account_id ? form.bank_account_id : null
+
       const { error: incErr } = await supabase.from('income_entries').insert({
         org_id: org.id,
         entry_date: form.date,
         description: `Membership fees — ${member.member_name} (${member.member_no})`,
         amount: totalToPay,
         payment_mode: form.payment_mode,
-        cash_account_id: form.payment_mode === 'cash' ? form.cash_account_id : null,
-        bank_account_id: form.payment_mode !== 'cash' ? form.bank_account_id : null,
+        cash_account_id: cashId,
+        bank_account_id: bankId,
         remarks: form.remarks || null,
       })
       if (incErr) throw incErr

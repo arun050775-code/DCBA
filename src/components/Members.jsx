@@ -197,6 +197,7 @@ export default function Members() {
               ) : members.map((m, i) => {
                 const anniv = getAnniversaryStatus(m.membership_date)
                 const hasOutstanding = Number(m.outstanding_fees) > 0
+                const memberNoOld = m.member_no?.replace(/^([A-Z])-0*(\d+)$/, (_, l, n) => `${l}-${parseInt(n)}`)
                 const photoUrl = `https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/member-photos/${m.member_no}.png`
                 return (
                   <tr key={m.id} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${hasOutstanding ? 'border-l-4 border-l-red-400' : ''}`}>
@@ -207,6 +208,8 @@ export default function Members() {
                           <img src={photoUrl} alt={m.member_name}
                             className="w-full h-full object-cover"
                             onError={e => {
+                              const oldUrl = `https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/member-photos/${memberNoOld}.png`
+                              if (!e.target.src.includes(memberNoOld)) { e.target.src = oldUrl; return }
                               e.target.style.display = 'none'
                               e.target.parentElement.innerHTML = `<div style="width:100%;height:100%;background:#1a3a5c;display:flex;align-items:center;justify-content:center;color:#f5c842;font-weight:700;font-size:0.7rem">${m.member_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`
                             }}
@@ -326,8 +329,7 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
     setForm(f => ({ ...f, member_name: name }))
     if (name.trim()) {
       const letter = name.trim().charAt(0).toUpperCase()
-      const sameLetter = members.filter(m => m.member_no?.startsWith(letter + '-')).length
-      setPreview(generateMemberNo(name, sameLetter + 1))
+      setPreview(`${letter}-XXXX (auto-assigned on save)`)
     }
   }
 
@@ -338,8 +340,24 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
     setSaving(true)
     try {
       const letter = form.member_name.trim().charAt(0).toUpperCase()
-      const sameLetter = members.filter(m => m.member_no?.startsWith(letter + '-')).length
-      const memberNo = generateMemberNo(form.member_name, sameLetter + 1)
+
+      // Get last member no for this letter — find max serial
+      const { data: existing } = await supabase
+        .from('dcba_members')
+        .select('member_no')
+        .eq('org_id', org.id)
+        .ilike('member_no', `${letter}-%`)
+        .order('member_no', { ascending: false })
+
+      let nextSerial = 1
+      if (existing && existing.length > 0) {
+        const serials = existing
+          .map(m => parseInt(m.member_no.split('-')[1]))
+          .filter(n => !isNaN(n))
+        if (serials.length > 0) nextSerial = Math.max(...serials) + 1
+      }
+
+      const memberNo = `${letter}-${String(nextSerial).padStart(4, '0')}`
 
       // Calculate initial outstanding
       const outstanding = ADMISSION_FEE + ANNUAL_FEE + (form.icard_issued ? ICARD_FEE : 0)

@@ -42,80 +42,62 @@ export default function Login() {
   return (
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #0f1f3d 0%, #1a3a5c 60%, #0d2137 100%)' }}>
 
-      {/* LEFT PANEL */}
-      <div className="hidden lg:flex flex-col w-2/3 p-8 overflow-y-auto">
-
-        {/* Header */}
-        <div className="flex items-center gap-5 mb-8">
-          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl flex-shrink-0">
-            <img src={DCBA_LOGO} alt="DCBA Logo" className="w-20 h-20 object-contain"
-              onError={e => { e.target.parentElement.innerHTML = '<span style="font-size:2rem;font-weight:800;color:#1a3a5c">DC</span>' }} />
+      {/* LEFT PANEL — Management Committee */}
+      <div className="hidden lg:flex flex-col w-1/2 p-6 overflow-y-auto">
+        <div className="flex items-center gap-4 mb-5">
+          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
+            <img src={DCBA_LOGO} alt="DCBA" className="w-12 h-12 object-contain"
+              onError={e => { e.target.parentElement.innerHTML = '<span style="font-size:1rem;font-weight:800;color:#1a3a5c">DC</span>' }} />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-wide">DWARKA COURT BAR ASSOCIATION</h1>
-            <p className="text-blue-300 text-sm mt-1">Dwarka Court Complex, Sector-10, New Delhi - 110075</p>
-            <p className="text-blue-400 text-xs mt-1">Phone: 011-28041409 · dwarkacourtbarassociation@gmail.com</p>
-            <div className="mt-2">
-              <span className="bg-yellow-500 text-blue-900 text-xs font-bold px-3 py-1 rounded-full">
-                Accounting & Management Suite
-              </span>
-            </div>
+            <h1 className="text-xl font-bold text-white leading-tight">DWARKA COURT BAR ASSOCIATION</h1>
+            <p className="text-blue-300 text-xs mt-0.5">Accounting & Management Suite</p>
           </div>
         </div>
 
-        {/* Gold divider */}
-        <div className="h-0.5 bg-gradient-to-r from-yellow-500 via-yellow-300 to-transparent mb-8 rounded-full" />
+        <div className="h-0.5 bg-gradient-to-r from-yellow-500 via-yellow-300 to-transparent mb-5 rounded-full" />
 
-        {/* Management Committee */}
-        <div>
-          <h2 className="text-yellow-400 text-sm font-bold uppercase tracking-widest mb-6">
-            Management Committee
-          </h2>
-          <div className="grid grid-cols-4 gap-4">
-            {COMMITTEE.map(m => (
-              <div key={m.name} className="text-center group">
-                <div className="w-16 h-16 mx-auto mb-2 rounded-full overflow-hidden border-2 border-yellow-500 shadow-lg flex items-center justify-center"
-                  style={{ background: 'linear-gradient(135deg, #1a3a5c, #2e5f8a)' }}>
-                  <span className="text-yellow-400 font-bold text-lg">{getInitials(m.name)}</span>
-                </div>
-                <p className="text-white text-xs font-bold leading-tight">{m.name}</p>
-                <p className="text-yellow-400 text-xs leading-tight mt-0.5">{m.designation}</p>
+        <p className="text-yellow-400 text-xs font-bold uppercase tracking-widest mb-4">Management Committee</p>
+
+        <div className="space-y-2">
+          {COMMITTEE.map((m, idx) => (
+            <div key={m.name} className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 hover:bg-white/10 transition-colors">
+              <div className="w-9 h-9 rounded-full border-2 border-yellow-500 flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #1a3a5c, #2e5f8a)' }}>
+                <span className="text-yellow-400 font-bold text-xs">{getInitials(m.name)}</span>
               </div>
-            ))}
-          </div>
-          <p className="text-blue-500 text-xs mt-4 italic">* Photographs will be updated on receipt</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-xs font-bold truncate">{m.name}</p>
+                <p className="text-yellow-400 text-xs">{m.designation}</p>
+              </div>
+              {idx === 0 && <span className="text-xs bg-yellow-500 text-blue-900 px-2 py-0.5 rounded-full font-bold flex-shrink-0">★</span>}
+            </div>
+          ))}
         </div>
 
-        {/* Footer */}
-        <div className="mt-auto pt-8">
-          <div className="h-px bg-white/10 mb-4" />
-          <p className="text-blue-600 text-xs text-center">
-            © 2026 Dwarka Court Bar Association. All Rights Reserved.
-          </p>
-          <p className="text-blue-700 text-xs text-center mt-1">
-            Powered by AKS & Associates
-          </p>
+        <p className="text-blue-600 text-xs mt-4 italic">* Photographs will be updated on receipt</p>
+
+        <div className="mt-auto pt-4 border-t border-white/10">
+          <p className="text-blue-600 text-xs text-center">© 2026 Dwarka Court Bar Association</p>
+          <p className="text-blue-700 text-xs text-center mt-0.5">Powered by AKS & Associates</p>
         </div>
       </div>
 
       {/* RIGHT PANEL — Login */}
-      <div className="w-full lg:w-1/3 flex items-center justify-center p-6"
-        style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6"
+        style={{ background: 'rgba(255,255,255,0.03)', borderLeft: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="w-full max-w-sm">
 
-          {/* Mobile header */}
           <div className="lg:hidden text-center mb-8">
-            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl mx-auto mb-3">
-              <span className="font-bold text-2xl text-blue-900">DC</span>
+            <div className="w-16 h-16 bg-white rounded-full mx-auto mb-3 flex items-center justify-center shadow-xl">
+              <span className="font-bold text-xl text-blue-900">DC</span>
             </div>
-            <h1 className="text-xl font-bold text-white">DWARKA COURT BAR ASSOCIATION</h1>
-            <p className="text-blue-300 text-xs mt-1">Accounting & Management Suite</p>
+            <h1 className="text-lg font-bold text-white">DCBA Admin Portal</h1>
           </div>
 
-          {/* Login Card */}
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <div className="text-center mb-6">
-              <h2 className="text-xl font-bold text-gray-800">Welcome Back</h2>
+              <h2 className="text-xl font-bold text-gray-800">Admin Login</h2>
               <p className="text-gray-400 text-sm mt-1">Sign in to continue</p>
             </div>
 
@@ -145,9 +127,11 @@ export default function Login() {
 
             <div className="mt-6 pt-4 border-t border-gray-100">
               <p className="text-center text-xs text-gray-400">Dwarka Court Bar Association</p>
+              <p className="text-center text-xs text-gray-300 mt-0.5">Accounting & Management Suite</p>
             </div>
           </div>
-          <p className="text-center text-blue-600 text-xs mt-6">Powered by AKS & Associates</p>
+
+          <p className="text-center text-blue-600 text-xs mt-4">Powered by AKS & Associates</p>
         </div>
       </div>
     </div>

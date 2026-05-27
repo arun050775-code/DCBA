@@ -823,10 +823,6 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     </div>
   )
 }
-      </div>
-    </div>
-  )
-}
 
 // ---- MEMBER DETAIL MODAL ----
 function MemberDetailModal({ member, onClose, org }) {

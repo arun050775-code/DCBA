@@ -51,6 +51,11 @@ export default function Members() {
 
   useEffect(() => { if (currentOrg) { setPage(0); fetchMembers(0) } }, [currentOrg, filterStatus])
   useEffect(() => { if (currentOrg) fetchMembers(page) }, [page])
+  useEffect(() => {
+    function handleCollectFeeEvent(e) { setShowPayModal(e.detail) }
+    document.addEventListener('collectFee', handleCollectFeeEvent)
+    return () => document.removeEventListener('collectFee', handleCollectFeeEvent)
+  }, [])
 
   async function fetchMembers(pageNum = 0) {
     setLoading(true)
@@ -288,7 +293,11 @@ export default function Members() {
         <AddMemberModal
           org={currentOrg}
           onClose={() => setShowAddModal(false)}
-          onSuccess={() => { setShowAddModal(false); fetchMembers() }}
+          onSuccess={(newMember) => { 
+            setShowAddModal(false)
+            fetchMembers()
+            if (newMember) setShowPayModal(newMember)
+          }}
           members={members}
         />
       )}
@@ -381,7 +390,10 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
       })
       if (error) throw error
       toast.success(`Member ${memberNo} created!`)
-      onSuccess()
+      // Return new member for fee collection
+      const { data: newMember } = await supabase.from('dcba_members')
+        .select('*').eq('org_id', org.id).eq('member_no', memberNo).single()
+      onSuccess(newMember)
     } catch (err) {
       toast.error(err.message)
     }
@@ -499,18 +511,19 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
 function CollectFeeModal({ member, org, onClose, onSuccess }) {
   const [cashAccounts, setCashAccounts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
+  const [collectMode, setCollectMode] = useState('outstanding') // 'outstanding' | 'advance'
+  const [advanceAmount, setAdvanceAmount] = useState('')
   const [form, setForm] = useState({
     payment_mode: 'cash',
     cash_account_id: '',
     bank_account_id: '',
-    amount: member.outstanding_fees || 0,
     pay_admission: !member.admission_fee_paid,
     pay_annual: !member.annual_fee_paid,
     pay_icard: false,
-    remarks: '',
     date: new Date().toISOString().split('T')[0],
   })
   const [saving, setSaving] = useState(false)
+  const [receipt, setReceipt] = useState(null)
 
   useEffect(() => { fetchAccounts() }, [])
 
@@ -524,52 +537,166 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     if (cash?.[0]) setForm(f => ({ ...f, cash_account_id: cash[0].id }))
   }
 
-  const totalToPay = (form.pay_admission && !member.admission_fee_paid ? ADMISSION_FEE : 0) +
+  const outstandingTotal =
+    (form.pay_admission && !member.admission_fee_paid ? ADMISSION_FEE : 0) +
     (form.pay_annual && !member.annual_fee_paid ? ANNUAL_FEE : 0) +
     (form.pay_icard ? ICARD_FEE : 0)
 
+  const totalToPay = collectMode === 'advance'
+    ? Number(advanceAmount) || 0
+    : outstandingTotal
+
+  function toWords(n) {
+    const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
+    const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
+    if (n === 0) return 'Zero'
+    if (n < 20) return a[n]
+    if (n < 100) return b[Math.floor(n/10)] + (n%10 ? ' ' + a[n%10] : '')
+    if (n < 1000) return a[Math.floor(n/100)] + ' Hundred' + (n%100 ? ' ' + toWords(n%100) : '')
+    if (n < 100000) return toWords(Math.floor(n/1000)) + ' Thousand' + (n%1000 ? ' ' + toWords(n%1000) : '')
+    return toWords(Math.floor(n/100000)) + ' Lakh' + (n%100000 ? ' ' + toWords(n%100000) : '')
+  }
+
   async function handleCollect() {
-    if (totalToPay <= 0) return toast.error('Select at least one fee to collect')
+    if (totalToPay <= 0) return toast.error('Enter amount to collect')
     setSaving(true)
     try {
-      // Record income entry — handle empty account IDs
       const cashId = form.payment_mode === 'cash' && form.cash_account_id ? form.cash_account_id : null
       const bankId = form.payment_mode !== 'cash' && form.bank_account_id ? form.bank_account_id : null
+
+      // Generate receipt number
+      const { count } = await supabase.from('income_entries')
+        .select('*', { count: 'exact', head: true }).eq('org_id', org.id)
+      const fy = new Date().getMonth() >= 3
+        ? `${new Date().getFullYear()}-${String(new Date().getFullYear()+1).slice(2)}`
+        : `${new Date().getFullYear()-1}-${String(new Date().getFullYear()).slice(2)}`
+      const receiptNo = `DCBA/RCP/${fy}/${String((count||0)+1).padStart(4,'0')}`
+
+      // Build description
+      const items = []
+      if (collectMode === 'outstanding') {
+        if (form.pay_admission && !member.admission_fee_paid) items.push(`Admission Fee ₹${ADMISSION_FEE}`)
+        if (form.pay_annual && !member.annual_fee_paid) items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
+        if (form.pay_icard) items.push(`I-Card Fee ₹${ICARD_FEE}`)
+      } else {
+        items.push(`Advance Payment ₹${totalToPay}`)
+      }
 
       const { error: incErr } = await supabase.from('income_entries').insert({
         org_id: org.id,
         entry_date: form.date,
-        description: `Membership fees — ${member.member_name} (${member.member_no})`,
+        description: `${items.join(', ')} — ${member.member_name} (${member.member_no}) | Rcpt: ${receiptNo}`,
         amount: totalToPay,
         payment_mode: form.payment_mode,
         cash_account_id: cashId,
         bank_account_id: bankId,
+        receipt_no: receiptNo,
       })
       if (incErr) throw incErr
 
-      // Update member outstanding
-      const newOutstanding = Math.max(0, Number(member.outstanding_fees) - totalToPay)
-      const { error: updErr } = await supabase.from('dcba_members').update({
+      // Update member
+      const newOutstanding = collectMode === 'advance'
+        ? Math.max(0, Number(member.outstanding_fees) - totalToPay)
+        : Math.max(0, Number(member.outstanding_fees) - outstandingTotal)
+
+      await supabase.from('dcba_members').update({
         outstanding_fees: newOutstanding,
-        admission_fee_paid: form.pay_admission ? true : member.admission_fee_paid,
-        annual_fee_paid: form.pay_annual ? true : member.annual_fee_paid,
+        admission_fee_paid: collectMode === 'outstanding' && form.pay_admission ? true : member.admission_fee_paid,
+        annual_fee_paid: collectMode === 'outstanding' && form.pay_annual ? true : member.annual_fee_paid,
+        icard_issued: collectMode === 'outstanding' && form.pay_icard ? true : member.icard_issued,
         last_fee_paid_date: form.date,
       }).eq('id', member.id)
-      if (updErr) throw updErr
 
-      toast.success(`₹${totalToPay} collected from ${member.member_name}!`)
-      onSuccess()
+      // Show receipt
+      setReceipt({
+        receiptNo,
+        date: form.date,
+        member,
+        items,
+        amount: totalToPay,
+        paymentMode: form.payment_mode.toUpperCase(),
+        amountInWords: toWords(totalToPay) + ' Only',
+      })
     } catch (err) {
       toast.error(err.message)
     }
     setSaving(false)
   }
 
-  const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
+  // Receipt view
+  if (receipt) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="px-6 py-4 border-b flex items-center justify-between bg-green-50">
+            <h3 className="font-bold text-green-800">✅ Payment Received!</h3>
+            <button onClick={() => { onSuccess(); onClose() }} className="text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+
+          {/* Receipt */}
+          <div id="receipt-print" className="px-6 py-4 space-y-3">
+            <div className="text-center border-b pb-3">
+              <p className="font-bold text-blue-900 text-base">DWARKA COURT BAR ASSOCIATION</p>
+              <p className="text-xs text-gray-500">Dwarka Courts Complex, New Delhi</p>
+              <p className="text-lg font-bold text-gray-800 mt-2">RECEIPT</p>
+            </div>
+
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Receipt No.</span>
+              <span className="font-bold text-blue-700">{receipt.receiptNo}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Date</span>
+              <span className="font-semibold">{new Date(receipt.date).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Received from</span>
+              <span className="font-semibold text-right">{receipt.member.member_name}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Member No.</span>
+              <span className="font-semibold">{receipt.member.member_no}</span>
+            </div>
+
+            <div className="border-t border-b py-2 space-y-1">
+              <p className="text-xs font-semibold text-gray-600 mb-1">Towards:</p>
+              {receipt.items.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-gray-700">• {item}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Amount</span>
+              <span className="text-2xl font-bold text-green-700">₹{Number(receipt.amount).toLocaleString('en-IN')}</span>
+            </div>
+            <div className="text-xs text-gray-500 italic">{receipt.amountInWords}</div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Payment Mode</span>
+              <span className="font-semibold">{receipt.paymentMode}</span>
+            </div>
+
+            <div className="text-right text-xs text-gray-400 pt-2 border-t">
+              <p className="font-semibold text-gray-600">Authorised Signatory</p>
+              <p>DCBA</p>
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t flex gap-3">
+            <button onClick={() => window.print()}
+              className="btn-primary flex-1">🖨️ Print Receipt</button>
+            <button onClick={() => { onSuccess(); onClose() }}
+              className="btn-secondary flex-1">Close</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b bg-green-50">
           <h3 className="text-lg font-semibold">Collect Membership Fee</h3>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
@@ -578,48 +705,74 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
         <div className="px-6 py-4 space-y-4">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
             <p className="font-bold text-blue-800">{member.member_name}</p>
-            <p className="text-xs text-blue-600">{member.member_no} · Outstanding: <strong className="text-red-600">{fmt(member.outstanding_fees)}</strong></p>
+            <p className="text-xs text-blue-600">{member.member_no} · Outstanding: <strong className="text-red-600">₹{Number(member.outstanding_fees).toLocaleString('en-IN')}</strong></p>
           </div>
 
-          {/* What to collect */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">Collect:</p>
-            {!member.admission_fee_paid && (
-              <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
-                <input type="checkbox" checked={form.pay_admission}
-                  onChange={e => setForm({ ...form, pay_admission: e.target.checked })}
-                  className="w-4 h-4 text-blue-600" />
-                <span className="text-sm">Admission Fee (one-time)</span>
-                <span className="ml-auto font-bold text-blue-700">₹{ADMISSION_FEE}</span>
-              </label>
-            )}
-            {!member.annual_fee_paid && (
-              <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
-                <input type="checkbox" checked={form.pay_annual}
-                  onChange={e => setForm({ ...form, pay_annual: e.target.checked })}
-                  className="w-4 h-4 text-green-600" />
-                <span className="text-sm">Annual Subscription</span>
-                <span className="ml-auto font-bold text-green-700">₹{ANNUAL_FEE}</span>
-              </label>
-            )}
-            {!member.icard_issued && (
-              <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
-                <input type="checkbox" checked={form.pay_icard}
-                  onChange={e => setForm({ ...form, pay_icard: e.target.checked })}
-                  className="w-4 h-4 text-purple-600" />
-                <span className="text-sm">I-Card Fee</span>
-                <span className="ml-auto font-bold text-purple-700">₹{ICARD_FEE}</span>
-              </label>
-            )}
+          {/* Collection mode */}
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setCollectMode('outstanding')}
+              className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${collectMode === 'outstanding' ? 'border-blue-700 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500'}`}>
+              💳 Collect O/S<br />
+              <span className="text-xs font-normal">₹{outstandingTotal}</span>
+            </button>
+            <button onClick={() => setCollectMode('advance')}
+              className={`p-3 rounded-xl border-2 text-sm font-semibold transition-all ${collectMode === 'advance' ? 'border-green-700 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500'}`}>
+              ➕ Advance<br />
+              <span className="text-xs font-normal">Custom amount</span>
+            </button>
           </div>
+
+          {/* Outstanding items */}
+          {collectMode === 'outstanding' && (
+            <div className="space-y-2">
+              {!member.admission_fee_paid && (
+                <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
+                  <input type="checkbox" checked={form.pay_admission}
+                    onChange={e => setForm({ ...form, pay_admission: e.target.checked })}
+                    className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm">Admission Fee (one-time)</span>
+                  <span className="ml-auto font-bold text-blue-700">₹{ADMISSION_FEE}</span>
+                </label>
+              )}
+              {!member.annual_fee_paid && (
+                <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
+                  <input type="checkbox" checked={form.pay_annual}
+                    onChange={e => setForm({ ...form, pay_annual: e.target.checked })}
+                    className="w-4 h-4 text-green-600" />
+                  <span className="text-sm">Annual Subscription</span>
+                  <span className="ml-auto font-bold text-green-700">₹{ANNUAL_FEE}</span>
+                </label>
+              )}
+              {!member.icard_issued && (
+                <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
+                  <input type="checkbox" checked={form.pay_icard}
+                    onChange={e => setForm({ ...form, pay_icard: e.target.checked })}
+                    className="w-4 h-4 text-purple-600" />
+                  <span className="text-sm">I-Card Fee</span>
+                  <span className="ml-auto font-bold text-purple-700">₹{ICARD_FEE}</span>
+                </label>
+              )}
+            </div>
+          )}
+
+          {/* Advance amount */}
+          {collectMode === 'advance' && (
+            <div>
+              <label className="label">Advance Amount (₹)</label>
+              <input type="number" className="input text-lg font-bold" value={advanceAmount}
+                onChange={e => setAdvanceAmount(e.target.value)}
+                placeholder="Enter amount" min="1" />
+              <p className="text-xs text-gray-400 mt-1">This will be adjusted against future dues</p>
+            </div>
+          )}
 
           {/* Payment mode */}
           <div>
             <label className="label">Payment Mode</label>
             <div className="flex gap-2 flex-wrap">
-              {['cash', 'cheque', 'upi', 'neft'].map(mode => (
-                <button key={mode} type="button" onClick={() => setForm({ ...form, payment_mode: mode })}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.payment_mode === mode ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200'}`}>
+              {['cash','cheque','upi','neft'].map(mode => (
+                <button key={mode} onClick={() => setForm({ ...form, payment_mode: mode })}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${form.payment_mode === mode ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200'}`}>
                   {mode.toUpperCase()}
                 </button>
               ))}
@@ -641,7 +794,7 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
               <label className="label">Bank Account</label>
               <select className="input" value={form.bank_account_id}
                 onChange={e => setForm({ ...form, bank_account_id: e.target.value })}>
-                {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.account_name} ({b.account_number})</option>)}
+                {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.account_name}</option>)}
               </select>
             </div>
           )}
@@ -652,20 +805,24 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
               onChange={e => setForm({ ...form, date: e.target.value })} />
           </div>
 
-          {/* Total */}
           <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center">
             <span className="font-semibold text-green-800">Total Collecting:</span>
-            <span className="text-2xl font-bold text-green-700">₹{totalToPay}</span>
+            <span className="text-2xl font-bold text-green-700">₹{totalToPay.toLocaleString('en-IN')}</span>
           </div>
         </div>
 
         <div className="px-6 py-4 border-t flex gap-3 justify-end">
           <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleCollect} disabled={saving || totalToPay <= 0} className="btn-primary flex items-center gap-2">
+          <button onClick={handleCollect} disabled={saving || totalToPay <= 0}
+            className="btn-primary flex items-center gap-2">
             <IndianRupee className="w-4 h-4" />
-            {saving ? 'Collecting...' : `Collect ₹${totalToPay}`}
+            {saving ? 'Processing...' : `Collect ₹${totalToPay.toLocaleString('en-IN')}`}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
       </div>
     </div>
   )
@@ -762,8 +919,14 @@ function MemberDetailModal({ member, onClose, org }) {
           )}
         </div>
 
-        <div className="px-6 py-4 border-t flex justify-end">
+        <div className="px-6 py-4 border-t flex justify-between items-center">
           <button onClick={onClose} className="btn-secondary">Close</button>
+          {Number(member.outstanding_fees) > 0 && (
+            <button onClick={() => { onClose(); setTimeout(() => document.dispatchEvent(new CustomEvent('collectFee', { detail: member })), 100) }}
+              className="btn-primary flex items-center gap-2">
+              💰 Collect Fee ₹{Number(member.outstanding_fees).toLocaleString('en-IN')}
+            </button>
+          )}
         </div>
       </div>
     </div>

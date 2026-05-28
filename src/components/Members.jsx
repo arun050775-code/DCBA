@@ -543,10 +543,7 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     if (cash?.[0]) setForm(f => ({ ...f, cash_account_id: cash[0].id }))
   }
 
-  const outstandingTotal =
-    (form.pay_admission && !member.admission_fee_paid ? ADMISSION_FEE : 0) +
-    (form.pay_annual && !member.annual_fee_paid ? ANNUAL_FEE : 0) +
-    (form.pay_icard ? ICARD_FEE : 0)
+  const outstandingTotal = Number(member.outstanding_fees) || 0
 
   const totalToPay = collectMode === 'advance'
     ? Number(advanceAmount) || 0

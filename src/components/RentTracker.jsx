@@ -14,7 +14,8 @@ import VendorLedger from './rent/VendorLedger'
 import ReceiptPrint from './rent/ReceiptPrint'
 
 import { computeOutstanding, paidUptoLabel, monthsDue } from '../utils/duesCalc'
-'February','March','April','May','June','July','August','September','October','November','December']
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const CATEGORIES = ['All','Typist Pool 1','Typist Pool 2','Photostat Vendor','Tea Stall','Stationery','Canteen / Kiosk']
 
 export default function RentTracker() {

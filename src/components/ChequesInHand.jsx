@@ -80,7 +80,7 @@ export default function ChequesInHand() {
   const [depositModal, setDepositModal] = useState(null) // cheque being deposited
   const [bankAccounts, setBankAccounts] = useState([])
 
-  const isAdmin = ['admin','cashier'].includes(userRole?.role)
+  const isAdmin = ['admin','cashier','supervisor'].includes(userRole?.role)
 
   useEffect(() => { if (currentOrg) { fetchCheques(); fetchBanks() } }, [currentOrg, filterStatus])
 

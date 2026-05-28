@@ -1,229 +1,132 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../../supabaseClient'
-import toast from 'react-hot-toast'
-import { X, IndianRupee, CreditCard } from 'lucide-react'
+import { useRef } from 'react'
+import { X, Printer } from 'lucide-react'
 
-export default function AdvanceModal({ org, staff, userRole, onClose, onSuccess }) {
-  const [form, setForm] = useState({
-    staff_id: staff[0]?.id || '',
-    advance_date: new Date().toISOString().split('T')[0],
-    amount: '',
-    purpose: '',
-    recovery_per_month: '2000',
-    opening_outstanding: '0',  // Opening outstanding if any
-    payment_mode: 'cash',
-    cash_account_id: '',
-    bank_account_id: '',
-    cheque_no: '',
-    bank_name: '',
-  })
-  const [cashAccounts, setCashAccounts] = useState([])
-  const [bankAccounts, setBankAccounts] = useState([])
-  const [saving, setSaving] = useState(false)
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${String(d.getDate()).padStart(2,'0')}-${months[d.getMonth()]}-${d.getFullYear()}`
+}
 
-  useEffect(() => { fetchAccounts() }, [])
+function VoucherBody({ voucher, copy }) {
+  const isReceipt = voucher.type === 'receipt'
+  return (
+    <div style={{ paddingTop:'36mm', paddingLeft:'18mm', paddingRight:'14mm', paddingBottom:'4mm', fontFamily:'Arial,sans-serif', fontSize:'11px', height:'148.5mm', boxSizing:'border-box', position:'relative' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'3px' }}>
+        <span style={{ fontSize:'8px', color:'#666', fontStyle:'italic' }}>{copy}</span>
+        <span style={{ fontSize:'9px', fontWeight:'bold', color: isReceipt ? '#166534' : '#991b1b' }}>
+          {isReceipt ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'}
+        </span>
+      </div>
 
-  async function fetchAccounts() {
-    const [{ data: cash }, { data: bank }] = await Promise.all([
-      supabase.from('cash_accounts').select('*').eq('org_id', org.id).eq('is_active', true),
-      supabase.from('bank_accounts').select('*').eq('org_id', org.id).eq('is_active', true),
-    ])
-    setCashAccounts(cash || [])
-    setBankAccounts(bank || [])
-    if (cash && cash.length > 0) setForm(f => ({ ...f, cash_account_id: cash[0].id }))
-  }
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px', borderBottom:'1px solid #ccc', paddingBottom:'4px' }}>
+        <span><strong>{isReceipt ? 'Receipt' : 'Voucher'} No:</strong> {voucher.ref_no}</span>
+        <span><strong>Date:</strong> {formatDate(voucher.date)}</span>
+      </div>
 
-  async function handleSave() {
-    if (!form.staff_id) return toast.error('Select staff member')
-    if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter advance amount')
-    if (form.payment_mode === 'cash' && !form.cash_account_id) return toast.error('Select cash account')
-    if (form.payment_mode !== 'cash' && !form.bank_account_id) return toast.error('Select bank account')
+      {voucher.payee_name && (
+        <div style={{ marginBottom:'5px' }}>
+          <strong>{isReceipt ? 'Received From' : 'Paid To'}: </strong>{voucher.payee_name}
+        </div>
+      )}
 
-    setSaving(true)
-    try {
-      const totalOutstanding = Number(form.amount) + Number(form.opening_outstanding || 0)
+      <div style={{ display:'flex', alignItems:'baseline', gap:'8px', marginBottom:'5px' }}>
+        <strong>Amount:</strong>
+        <span style={{ fontSize:'15px', fontWeight:'bold' }}>₹{Number(voucher.amount).toLocaleString('en-IN')}</span>
+        <span style={{ fontSize:'9px', color:'#444', fontStyle:'italic' }}>({voucher.amount_words})</span>
+      </div>
 
-      // 1. Record salary advance
-      const { error: advErr } = await supabase.from('salary_advances').insert({
-        org_id: org.id,
-        staff_id: form.staff_id,
-        advance_date: form.advance_date,
-        amount: Number(form.amount),
-        purpose: form.purpose,
-        recovery_per_month: Number(form.recovery_per_month) || 2000,
-        balance_outstanding: totalOutstanding,
-        opening_outstanding: Number(form.opening_outstanding || 0),
-      })
-      if (advErr) throw advErr
+      {voucher.head && (
+        <div style={{ marginBottom:'4px' }}>
+          <strong>Account Head: </strong>{voucher.head}{voucher.sub_head ? ` → ${voucher.sub_head}` : ''}
+        </div>
+      )}
 
-      // 2. Create payment voucher in expenditure_entries
-      const selectedStaff = staff.find(s => s.id === form.staff_id)
-      const { error: expErr } = await supabase.from('expenditure_entries').insert({
-        org_id: org.id,
-        entry_date: form.advance_date,
-        payee_name: selectedStaff?.name || '',
-        description: `Salary Advance — ${form.purpose || 'Personal'}`,
-        amount: Number(form.amount),
-        payment_mode: form.payment_mode,
-        cash_account_id: form.payment_mode === 'cash' ? form.cash_account_id : null,
-        bank_account_id: form.payment_mode !== 'cash' ? form.bank_account_id : null,
-        cheque_no: form.cheque_no || null,
-        bank_name: form.bank_name || null,
-        account_head_id: null, // Salary Advance is balance sheet item
-        remarks: `Advance to ${selectedStaff?.name} — Recovery: ₹${form.recovery_per_month}/month`,
-      })
-      if (expErr) console.warn('Voucher creation warning:', expErr.message)
+      {voucher.description && (
+        <div style={{ marginBottom:'4px' }}>
+          <strong>Description: </strong>{voucher.description}
+        </div>
+      )}
 
-      toast.success('Salary advance recorded & payment voucher created!')
-      onSuccess()
-    } catch (err) {
-      toast.error(err.message)
-    }
-    setSaving(false)
+      <div style={{ display:'flex', gap:'14px', marginBottom:'4px', flexWrap:'wrap' }}>
+        <span><strong>Mode:</strong> {voucher.payment_mode?.toUpperCase()}</span>
+        {voucher.cheque_no && <span><strong>Chq No:</strong> {voucher.cheque_no}</span>}
+        {voucher.cheque_date && <span><strong>Chq Date:</strong> {formatDate(voucher.cheque_date)}</span>}
+        {voucher.bank_name && <span><strong>Bank:</strong> {voucher.bank_name}</span>}
+        {voucher.transaction_id && <span><strong>Txn ID:</strong> {voucher.transaction_id}</span>}
+      </div>
+
+      {voucher.remarks && (
+        <div style={{ fontSize:'9px', color:'#555', marginBottom:'4px' }}>
+          <strong>Remarks:</strong> {voucher.remarks}
+        </div>
+      )}
+
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', position:'absolute', bottom:'8mm', left:'18mm', right:'14mm' }}>
+        <div style={{ textAlign:'center', borderTop:'1px solid #999', paddingTop:'2px', width:'80px', fontSize:'9px', color:'#777' }}>
+          {isReceipt ? 'Receiver' : 'Payee'}
+        </div>
+        <div style={{ textAlign:'right' }}>
+          <div style={{ fontSize:'9px', color:'#777', marginBottom:'10mm' }}>For Dwarka Court Bar Association</div>
+          <div style={{ borderTop:'1px solid #000', paddingTop:'2px', fontSize:'10px', minWidth:'110px', textAlign:'center' }}>
+            {voucher.cashier_name || 'Authorised Signatory'}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function VoucherPrint({ voucher, org, onClose }) {
+  const printRef = useRef()
+
+  function handlePrint() {
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html><html><head><title>Voucher - ${voucher.ref_no}</title>
+      <style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif}.half{height:148.5mm;overflow:hidden;page-break-inside:avoid}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+    </head><body>${printRef.current.innerHTML}
+    <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script></body></html>`)
+    win.document.close()
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-orange-50">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-orange-600" /> Record Salary Advance
-          </h3>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div>
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Printer className="w-5 h-5 text-blue-600" />
+              {voucher.type === 'receipt' ? 'Print Receipt Voucher' : 'Print Payment Voucher'}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">Prints on DCBA pre-printed A4 letterhead · 2 copies per sheet</p>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-
-          {/* Staff */}
-          <div>
-            <label className="label">Staff Member *</label>
-            <select className="input" value={form.staff_id} onChange={e => setForm({ ...form, staff_id: e.target.value })}>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.designation}</option>)}
-            </select>
-          </div>
-
-          {/* Date + Amount */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Date</label>
-              <input type="date" className="input" value={form.advance_date}
-                onChange={e => setForm({ ...form, advance_date: e.target.value })} />
-            </div>
-            <div>
-              <label className="label">Advance Amount (₹) *</label>
-              <div className="relative">
-                <IndianRupee className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                <input type="number" className="input pl-8" value={form.amount}
-                  onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="0" />
+        <div className="p-4 bg-gray-100 overflow-y-auto max-h-[70vh]">
+          <div ref={printRef} style={{ background:'#fffff0', border:'1px solid #d4d010', borderRadius:'4px', overflow:'hidden' }}>
+            <div className="half" style={{ height:'148.5mm', position:'relative' }}>
+              <div style={{ height:'36mm', background:'rgba(212,208,16,0.15)', borderBottom:'1px dashed #ccc', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontSize:'9px', color:'#999', fontStyle:'italic' }}>↑ DCBA Pre-printed letterhead</span>
               </div>
+              <VoucherBody voucher={voucher} copy="ORIGINAL" />
             </div>
-          </div>
-
-          {/* Opening Outstanding */}
-          <div>
-            <label className="label">Opening Outstanding Balance (₹)
-              <span className="text-gray-400 font-normal ml-1">— if any previous advance is pending</span>
-            </label>
-            <div className="relative">
-              <IndianRupee className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-              <input type="number" className="input pl-8" value={form.opening_outstanding}
-                onChange={e => setForm({ ...form, opening_outstanding: e.target.value })} placeholder="0" />
+            <div style={{ borderTop:'1px dashed #999', textAlign:'center', fontSize:'8px', color:'#999', padding:'2px 0', background:'#f5f5d0' }}>
+              ✂ — — — Cut Here — — — ✂
             </div>
-            {Number(form.opening_outstanding) > 0 && Number(form.amount) > 0 && (
-              <p className="text-xs text-orange-600 mt-1 font-medium">
-                Total Outstanding: ₹{(Number(form.amount) + Number(form.opening_outstanding)).toLocaleString('en-IN')}
-              </p>
-            )}
-          </div>
-
-          {/* Monthly Recovery */}
-          <div>
-            <label className="label">Monthly Recovery (₹)</label>
-            <input type="number" className="input" value={form.recovery_per_month}
-              onChange={e => setForm({ ...form, recovery_per_month: e.target.value })} placeholder="2000" />
-            <p className="text-xs text-gray-400 mt-1">Amount to be deducted from salary each month</p>
-          </div>
-
-          {/* Payment Mode */}
-          <div>
-            <label className="label">Payment Mode *</label>
-            <div className="flex gap-2 flex-wrap">
-              {['cash', 'cheque', 'upi', 'neft'].map(mode => (
-                <button key={mode} type="button"
-                  onClick={() => setForm({ ...form, payment_mode: mode })}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.payment_mode === mode ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                  {mode.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Cash Account */}
-          {form.payment_mode === 'cash' && (
-            <div>
-              <label className="label">Cash Account *</label>
-              <select className="input" value={form.cash_account_id}
-                onChange={e => setForm({ ...form, cash_account_id: e.target.value })}>
-                {cashAccounts.map(c => <option key={c.id} value={c.id}>{c.cashier_name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {/* Bank Account */}
-          {form.payment_mode !== 'cash' && (
-            <div className="space-y-3">
-              <div>
-                <label className="label">Bank Account *</label>
-                <select className="input" value={form.bank_account_id}
-                  onChange={e => setForm({ ...form, bank_account_id: e.target.value })}>
-                  <option value="">Select bank account</option>
-                  {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.account_name} ({b.account_number})</option>)}
-                </select>
+            <div className="half" style={{ height:'148.5mm', position:'relative' }}>
+              <div style={{ height:'36mm', background:'rgba(212,208,16,0.15)', borderBottom:'1px dashed #ccc', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontSize:'9px', color:'#999', fontStyle:'italic' }}>↑ Duplicate half</span>
               </div>
-              {form.payment_mode === 'cheque' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Cheque No.</label>
-                    <input className="input" value={form.cheque_no}
-                      onChange={e => setForm({ ...form, cheque_no: e.target.value })} placeholder="Cheque number" />
-                  </div>
-                  <div>
-                    <label className="label">Bank Name</label>
-                    <input className="input" value={form.bank_name}
-                      onChange={e => setForm({ ...form, bank_name: e.target.value })} placeholder="Bank name" />
-                  </div>
-                </div>
-              )}
+              <VoucherBody voucher={voucher} copy="DUPLICATE (Office Copy)" />
             </div>
-          )}
-
-          {/* Purpose */}
-          <div>
-            <label className="label">Purpose</label>
-            <input className="input" value={form.purpose}
-              onChange={e => setForm({ ...form, purpose: e.target.value })}
-              placeholder="e.g. Medical emergency, personal need..." />
           </div>
-
-          {/* Summary */}
-          {form.amount && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
-              <p className="font-semibold text-orange-800 mb-1">Summary:</p>
-              <div className="text-xs space-y-1 text-orange-700">
-                <p>Advance Amount: <strong>₹{Number(form.amount||0).toLocaleString('en-IN')}</strong></p>
-                {Number(form.opening_outstanding) > 0 && <p>+ Opening Outstanding: <strong>₹{Number(form.opening_outstanding).toLocaleString('en-IN')}</strong></p>}
-                <p>= Total Outstanding: <strong>₹{(Number(form.amount||0)+Number(form.opening_outstanding||0)).toLocaleString('en-IN')}</strong></p>
-                <p>Monthly Recovery: <strong>₹{Number(form.recovery_per_month||0).toLocaleString('en-IN')}/month</strong></p>
-                <p className="text-orange-500 italic">⚡ Payment voucher will be auto-created</p>
-              </div>
-            </div>
-          )}
         </div>
 
-        <div className="px-6 py-4 border-t flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="btn-primary">
-            {saving ? 'Saving...' : 'Record Advance & Create Voucher'}
+        <div className="px-6 py-4 border-t flex gap-3 justify-between">
+          <button onClick={onClose} className="btn-secondary">Close</button>
+          <button onClick={handlePrint} className="btn-primary flex items-center gap-2">
+            <Printer className="w-4 h-4" /> Print Voucher
           </button>
         </div>
       </div>

@@ -27,6 +27,7 @@ async function generateRefNo(orgId, shortName, type) {
 }
 
 export default function CashEntryModal({ type, org, userRole, cashAccounts, onClose, onSuccess }) {
+  const isSupervisor = userRole?.role === 'supervisor'
   const isReceipt = type === 'receipt'
   const [heads, setHeads] = useState([])
   const [subHeads, setSubHeads] = useState([])
@@ -73,7 +74,7 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts, onCl
 
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter amount')
-    if (!form.head_id) return toast.error('Select account head')
+    if (!isSupervisor && !form.head_id) return toast.error('Select account head')
 
     setSaving(true)
     try {
@@ -154,15 +155,17 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts, onCl
             </div>
           </div>
 
-          <div>
-            <label className="label">Account Head *</label>
-            <select className="input" value={form.head_id}
-              onChange={e => { setForm({ ...form, head_id: e.target.value, sub_head_id: '' }); fetchSubHeads(e.target.value) }}>
-              {heads.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-            </select>
-          </div>
+          {!isSupervisor && (
+            <div>
+              <label className="label">Account Head *</label>
+              <select className="input" value={form.head_id}
+                onChange={e => { setForm({ ...form, head_id: e.target.value, sub_head_id: '' }); fetchSubHeads(e.target.value) }}>
+                {heads.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </div>
+          )}
 
-          {subHeads.length > 0 && (
+          {!isSupervisor && subHeads.length > 0 && (
             <div>
               <label className="label">Sub-Head</label>
               <select className="input" value={form.sub_head_id}
@@ -204,7 +207,7 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts, onCl
           <div>
             <label className="label">Payment Mode</label>
             <div className="flex gap-2 flex-wrap">
-              {['cash', 'cheque', 'upi', 'neft'].map(mode => (
+              {['cash'].map(mode => (
                 <button key={mode} onClick={() => setForm({ ...form, payment_mode: mode })}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border capitalize transition-colors ${form.payment_mode === mode ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
                   {mode}

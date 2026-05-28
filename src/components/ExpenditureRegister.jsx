@@ -24,7 +24,8 @@ export default function ExpenditureRegister() {
   const [cashAccounts, setCashAccounts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
 
-  const isCashier = ['admin', 'cashier'].includes(userRole?.role)
+  const role = userRole?.role
+  const isCashier = role && ['admin','supervisor','accountant'].includes(role)
 
   useEffect(() => { if (currentOrg) { fetchData(); fetchAccounts() } }, [currentOrg, filterMonth, filterYear])
 

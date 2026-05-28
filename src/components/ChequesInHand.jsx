@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { CheckSquare, Clock, XCircle, Search, Landmark, RefreshCw } from 'lucide-react'
+import { CheckSquare, Clock, XCircle, Search, Landmark, RefreshCw, X } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -12,6 +12,64 @@ function formatDate(d) {
   return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
 }
 
+// Deposit confirmation modal
+function DepositModal({ cheque, bankAccounts, onConfirm, onClose }) {
+  const [bankId, setBankId] = useState(bankAccounts[0]?.id || '')
+  const [depositDate, setDepositDate] = useState(new Date().toISOString().split('T')[0])
+  const [saving, setSaving] = useState(false)
+
+  async function handleConfirm() {
+    if (!bankId) return toast.error('Select bank account')
+    setSaving(true)
+    await onConfirm(cheque, bankId, depositDate)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b bg-green-50">
+          <h3 className="font-semibold text-green-800 flex items-center gap-2">
+            <CheckSquare className="w-5 h-5" /> Mark as Deposited
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          {/* Cheque info */}
+          <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+            <div className="flex justify-between"><span className="text-gray-500">Party</span><span className="font-medium">{cheque.party}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Cheque No.</span><span className="font-mono font-semibold text-blue-700">{cheque.cheque_no}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-bold text-green-700">₹{Number(cheque.amount).toLocaleString('en-IN')}</span></div>
+          </div>
+
+          {/* Bank selection */}
+          <div>
+            <label className="label">Deposited in Bank Account *</label>
+            <select className="input" value={bankId} onChange={e => setBankId(e.target.value)}>
+              {bankAccounts.map(b => (
+                <option key={b.id} value={b.id}>{b.account_name} — {b.bank_name} ({b.account_number})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Deposit date */}
+          <div>
+            <label className="label">Deposit Date</label>
+            <input type="date" className="input" value={depositDate} onChange={e => setDepositDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleConfirm} disabled={saving} className="btn-success flex items-center gap-2">
+            <CheckSquare className="w-4 h-4" />
+            {saving ? 'Saving...' : 'Confirm Deposit'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ChequesInHand() {
   const { currentOrg, userRole } = useAuth()
   const [cheques, setCheques] = useState([])
@@ -19,10 +77,17 @@ export default function ChequesInHand() {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('pending')
   const [updating, setUpdating] = useState(null)
+  const [depositModal, setDepositModal] = useState(null) // cheque being deposited
+  const [bankAccounts, setBankAccounts] = useState([])
 
   const isAdmin = ['admin','cashier'].includes(userRole?.role)
 
-  useEffect(() => { if (currentOrg) fetchCheques() }, [currentOrg, filterStatus])
+  useEffect(() => { if (currentOrg) { fetchCheques(); fetchBanks() } }, [currentOrg, filterStatus])
+
+  async function fetchBanks() {
+    const { data } = await supabase.from('bank_accounts').select('*').eq('org_id', currentOrg.id).eq('is_active', true)
+    setBankAccounts(data || [])
+  }
 
   async function fetchCheques() {
     setLoading(true)
@@ -69,13 +134,25 @@ export default function ChequesInHand() {
     setLoading(false)
   }
 
-  async function updateStatus(cheque, newStatus) {
-    setUpdating(cheque.id)
+  async function confirmDeposit(cheque, bankId, depositDate) {
     const table = cheque.source === 'rent' ? 'rent_collections' : 'income_entries'
-    const { error } = await supabase.from(table).update({ cheque_status: newStatus }).eq('id', cheque.id)
+    const { error } = await supabase.from(table).update({
+      cheque_status: 'deposited',
+      bank_account_id: bankId,
+      collection_date: cheque.source === 'rent' ? depositDate : undefined,
+      entry_date: cheque.source === 'income' ? depositDate : undefined,
+    }).eq('id', cheque.id)
     if (error) toast.error(error.message)
-    else toast.success(`Cheque marked as ${newStatus}`)
-    setUpdating(null)
+    else toast.success('Cheque marked as deposited!')
+    setDepositModal(null)
+    fetchCheques()
+  }
+
+  async function markBounced(cheque) {
+    const table = cheque.source === 'rent' ? 'rent_collections' : 'income_entries'
+    const { error } = await supabase.from(table).update({ cheque_status: 'bounced' }).eq('id', cheque.id)
+    if (error) toast.error(error.message)
+    else toast.success('Cheque marked as bounced')
     fetchCheques()
   }
 
@@ -162,9 +239,9 @@ export default function ChequesInHand() {
                   <td className="table-cell">
                     {isAdmin && c.status === 'pending' && (
                       <div className="flex gap-1">
-                        <button onClick={() => updateStatus(c,'deposited')} disabled={updating===c.id}
+                        <button onClick={() => setDepositModal(c)}
                           className="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded font-medium">✓ Deposited</button>
-                        <button onClick={() => updateStatus(c,'bounced')} disabled={updating===c.id}
+                        <button onClick={() => markBounced(c)}
                           className="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded font-medium">✗ Bounced</button>
                       </div>
                     )}
@@ -177,6 +254,16 @@ export default function ChequesInHand() {
         </div>
         <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">{filtered.length} cheques shown</div>
       </div>
+
+      {/* Deposit Modal */}
+      {depositModal && (
+        <DepositModal
+          cheque={depositModal}
+          bankAccounts={bankAccounts}
+          onConfirm={confirmDeposit}
+          onClose={() => setDepositModal(null)}
+        />
+      )}
     </div>
   )
 }

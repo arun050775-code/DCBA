@@ -26,10 +26,12 @@ async function generateRefNo(orgId, shortName, type) {
   return `${shortName}/${prefix}/${fy}/${serial}`
 }
 
-export default function BankEntryModal({ type, org, userRole, bankAccounts, cashAccounts, onClose, onSuccess }) {
+export default function BankEntryModal({ type, org, userRole, bankAccounts: propBankAccounts, cashAccounts: propCashAccounts, onClose, onSuccess }) {
+  const isSupervisor = userRole?.role === 'supervisor'
   const isReceipt = type === 'receipt'
   const [heads, setHeads] = useState([])
   const [subHeads, setSubHeads] = useState([])
+  const [bankAccounts, setBankAccounts] = useState(propBankAccounts || [])
   const [form, setForm] = useState({
     entry_date: new Date().toISOString().split('T')[0],
     ref_no: '',
@@ -38,17 +40,28 @@ export default function BankEntryModal({ type, org, userRole, bankAccounts, cash
     description: '',
     amount: '',
     payment_mode: isReceipt ? 'neft' : 'cheque',
-    bank_account_id: bankAccounts[0]?.id || '',
+    bank_account_id: propBankAccounts?.[0]?.id || '',
     payee_name: '',
     cheque_no: '',
+    cheque_date: new Date().toISOString().split('T')[0],
+    transaction_id: '',
     remarks: '',
   })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchHeads()
+    fetchBankAccounts()
     generateRefNo(org.id, org.short_name, type).then(no => setForm(f => ({ ...f, ref_no: no })))
   }, [])
+
+  async function fetchBankAccounts() {
+    const { data } = await supabase.from('bank_accounts').select('*').eq('org_id', org.id).eq('is_active', true)
+    if (data?.length > 0) {
+      setBankAccounts(data)
+      setForm(f => ({ ...f, bank_account_id: f.bank_account_id || data[0].id }))
+    }
+  }
 
   async function fetchHeads() {
     const { data } = await supabase.from('account_heads')
@@ -71,7 +84,7 @@ export default function BankEntryModal({ type, org, userRole, bankAccounts, cash
 
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter amount')
-    if (!form.head_id) return toast.error('Select account head')
+    if (!isSupervisor && !form.head_id) return toast.error('Select account head')
 
     setSaving(true)
     try {
@@ -161,15 +174,17 @@ export default function BankEntryModal({ type, org, userRole, bankAccounts, cash
             </select>
           </div>
 
-          <div>
-            <label className="label">Account Head *</label>
-            <select className="input" value={form.head_id}
-              onChange={e => { setForm({ ...form, head_id: e.target.value, sub_head_id: '' }); fetchSubHeads(e.target.value) }}>
-              {heads.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-            </select>
-          </div>
+          {!isSupervisor && (
+            <div>
+              <label className="label">Account Head *</label>
+              <select className="input" value={form.head_id}
+                onChange={e => { setForm({ ...form, head_id: e.target.value, sub_head_id: '' }); fetchSubHeads(e.target.value) }}>
+                {heads.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </div>
+          )}
 
-          {subHeads.length > 0 && (
+          {!isSupervisor && subHeads.length > 0 && (
             <div>
               <label className="label">Sub-Head</label>
               <select className="input" value={form.sub_head_id}

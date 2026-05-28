@@ -26,11 +26,12 @@ async function generateRefNo(orgId, shortName, type) {
   return `${shortName}/${prefix}/${fy}/${serial}`
 }
 
-export default function CashEntryModal({ type, org, userRole, cashAccounts, onClose, onSuccess }) {
+export default function CashEntryModal({ type, org, userRole, cashAccounts: propCashAccounts, onClose, onSuccess }) {
   const isSupervisor = userRole?.role === 'supervisor'
   const isReceipt = type === 'receipt'
   const [heads, setHeads] = useState([])
   const [subHeads, setSubHeads] = useState([])
+  const [cashAccounts, setCashAccounts] = useState(propCashAccounts || [])
   const [form, setForm] = useState({
     entry_date: new Date().toISOString().split('T')[0],
     ref_no: '',
@@ -39,7 +40,7 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts, onCl
     description: '',
     amount: '',
     payment_mode: 'cash',
-    cash_account_id: cashAccounts[0]?.id || '',
+    cash_account_id: propCashAccounts?.[0]?.id || '',
     payee_name: '',
     cheque_no: '',
     remarks: '',
@@ -48,8 +49,17 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts, onCl
 
   useEffect(() => {
     fetchHeads()
+    fetchCashAccounts()
     generateRefNo(org.id, org.short_name, type).then(no => setForm(f => ({ ...f, ref_no: no })))
   }, [])
+
+  async function fetchCashAccounts() {
+    const { data } = await supabase.from('cash_accounts').select('*').eq('org_id', org.id).eq('is_active', true)
+    if (data?.length > 0) {
+      setCashAccounts(data)
+      setForm(f => ({ ...f, cash_account_id: f.cash_account_id || data[0].id }))
+    }
+  }
 
   async function fetchHeads() {
     const { data } = await supabase.from('account_heads')
@@ -136,7 +146,6 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts, onCl
               <Icon className={`w-5 h-5 text-${color}-600`} />
               {isReceipt ? 'Cash Receipt' : 'Cash Payment'}
             </h3>
-            <p className="text-sm text-gray-500">Non-rent entry</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>

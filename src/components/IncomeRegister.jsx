@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { Receipt, Plus, Search, Filter, TrendingUp, IndianRupee, Eye } from 'lucide-react'
+import { Receipt, Plus, Search, TrendingUp, IndianRupee, XCircle, AlertTriangle } from 'lucide-react'
 import CashEntryModal from './cashbank/CashEntryModal'
 import BankEntryModal from './cashbank/BankEntryModal'
 import VoucherPrint from './cashbank/VoucherPrint'
-import CollectionModal from './rent/CollectionModal'
-import ReceiptPrint from './rent/ReceiptPrint'
+import CancelEditModal from './shared/CancelEditModal'
+import { canCancel, logAudit } from '../utils/auditUtils'
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const CURRENT_YEAR = new Date().getFullYear()
@@ -22,12 +22,14 @@ export default function IncomeRegister() {
   const [filterYear, setFilterYear] = useState(CURRENT_YEAR)
   const [filterHead, setFilterHead] = useState('all')
   const [search, setSearch] = useState('')
-  const [showEntry, setShowEntry] = useState(null) // 'cash' or 'bank'
+  const [showEntry, setShowEntry] = useState(null)
   const [printVoucher, setPrintVoucher] = useState(null)
   const [cashAccounts, setCashAccounts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
+  const [cancelModal, setCancelModal] = useState(null) // {entry, type}
 
-  const isCashier = ['admin', 'cashier'].includes(userRole?.role)
+  const role = userRole?.role || 'cashier'
+  const canAdd = ['admin','cashier','supervisor','accountant'].includes(role)
 
   useEffect(() => { if (currentOrg) { fetchData(); fetchAccounts() } }, [currentOrg, filterMonth, filterYear])
 
@@ -44,7 +46,6 @@ export default function IncomeRegister() {
     setLoading(true)
     const startDate = `${filterYear}-${String(filterMonth).padStart(2,'0')}-01`
     const endDate = new Date(filterYear, filterMonth, 0).toISOString().split('T')[0]
-
     const [{ data: inc }, { data: rent }, { data: h }] = await Promise.all([
       supabase.from('income_entries')
         .select('*, account_heads(name), account_sub_heads(name), cash_accounts(cashier_name), bank_accounts(account_name)')
@@ -58,44 +59,68 @@ export default function IncomeRegister() {
         .order('collection_date'),
       supabase.from('account_heads').select('*').eq('org_id', currentOrg.id).eq('type', 'income').eq('is_active', true).order('sort_order'),
     ])
-
     setEntries(inc || [])
     setRentCollections(rent || [])
     setHeads(h || [])
     setLoading(false)
   }
 
-  // Merge all income entries
+  async function handleCancel(reason) {
+    const { entry, type } = cancelModal
+    const table = type === 'rent' ? 'rent_collections' : 'income_entries'
+    const idField = 'id'
+
+    const { data: session } = await supabase.auth.getSession()
+    const userId = session?.session?.user?.id
+
+    const { error } = await supabase.from(table).update({
+      is_cancelled: true,
+      cancelled_by: userId,
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: reason,
+    }).eq(idField, entry.id)
+
+    if (error) { toast.error(error.message); return }
+
+    await logAudit({
+      orgId: currentOrg.id,
+      tableName: table,
+      recordId: entry.id,
+      action: 'cancel',
+      oldData: entry.raw,
+      reason,
+      userId,
+      userName: userRole?.name,
+      userRole: role,
+    })
+
+    toast.success('Entry cancelled successfully')
+    setCancelModal(null)
+    fetchData()
+  }
+
   const allIncome = [
-    ...(rentCollections.map(r => ({
-      id: r.id,
-      date: r.collection_date,
-      ref_no: r.receipt_no,
+    ...(rentCollections.filter(r => !r.is_cancelled).map(r => ({
+      id: r.id, date: r.collection_date, ref_no: r.receipt_no,
       head: 'Vendor Rent Income',
       sub_head: r.vendors?.vendor_categories?.name || '',
       description: `Rent from ${r.vendors?.name} (${r.months_covered})`,
-      amount: r.amount,
-      mode: r.payment_mode,
+      amount: r.amount, mode: r.payment_mode,
       account: r.cash_accounts?.cashier_name || r.bank_accounts?.account_name || '',
-      type: 'rent',
-      raw: r,
+      type: 'rent', raw: r, is_cancelled: r.is_cancelled,
+      created_at: r.created_at,
     }))),
-    ...(entries.map(e => ({
-      id: e.id,
-      date: e.entry_date,
-      ref_no: e.receipt_no,
+    ...(entries.filter(e => !e.is_cancelled).map(e => ({
+      id: e.id, date: e.entry_date, ref_no: e.receipt_no,
       head: e.account_heads?.name || '',
       sub_head: e.account_sub_heads?.name || '',
-      description: e.description || '',
-      amount: e.amount,
-      mode: e.payment_mode,
+      description: e.description || '', amount: e.amount, mode: e.payment_mode,
       account: e.cash_accounts?.cashier_name || e.bank_accounts?.account_name || '',
-      type: 'income',
-      raw: e,
+      type: 'income', raw: e, is_cancelled: e.is_cancelled,
+      created_at: e.created_at,
     }))),
   ].sort((a, b) => new Date(a.date) - new Date(b.date))
 
-  // Filter
   const filtered = allIncome.filter(e => {
     const matchHead = filterHead === 'all' || e.head === filterHead
     const matchSearch = !search || e.description.toLowerCase().includes(search.toLowerCase()) || (e.ref_no || '').toLowerCase().includes(search.toLowerCase())
@@ -104,7 +129,6 @@ export default function IncomeRegister() {
 
   const totalIncome = filtered.reduce((s, e) => s + Number(e.amount), 0)
 
-  // Category-wise summary
   const summary = {}
   filtered.forEach(e => {
     const key = e.head + (e.sub_head ? ` — ${e.sub_head}` : '')
@@ -126,7 +150,7 @@ export default function IncomeRegister() {
           </h1>
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name} — {MONTHS[filterMonth - 1]} {filterYear}</p>
         </div>
-        {isCashier && (
+        {canAdd && (
           <div className="flex gap-2">
             <button onClick={() => setShowEntry('cash')} className="btn-success flex items-center gap-2">
               <Plus className="w-4 h-4" /> Cash Receipt
@@ -175,42 +199,53 @@ export default function IncomeRegister() {
         </div>
       </div>
 
-      {/* Income Table */}
+      {/* Table */}
       <div className="card p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr>
-                {['Date', 'Receipt No.', 'Head', 'Description', 'Mode', 'Account', 'Amount (₹)'].map(h => (
+                {['Date','Receipt No.','Head','Description','Mode','Account','Amount (₹)','Action'].map(h => (
                   <th key={h} className="table-header text-left whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="table-cell text-center py-8 text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={8} className="table-cell text-center py-8 text-gray-400">Loading...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="table-cell text-center py-8 text-gray-400">No income entries for this period</td></tr>
+                <tr><td colSpan={8} className="table-cell text-center py-8 text-gray-400">No income entries for this period</td></tr>
               ) : (
                 <>
-                  {filtered.map((e, i) => (
-                    <tr key={e.id + e.type} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-green-50/20`}>
-                      <td className="table-cell text-xs whitespace-nowrap">{formatDate(e.date)}</td>
-                      <td className="table-cell text-xs font-mono text-gray-500">{e.ref_no || '—'}</td>
-                      <td className="table-cell text-xs">
-                        <div className="font-medium">{e.head}</div>
-                        {e.sub_head && <div className="text-gray-400">{e.sub_head}</div>}
-                      </td>
-                      <td className="table-cell text-sm max-w-xs truncate">{e.description || '—'}</td>
-                      <td className="table-cell text-xs capitalize">{e.mode}</td>
-                      <td className="table-cell text-xs text-gray-500">{e.account}</td>
-                      <td className="table-cell text-right font-semibold text-green-700">
-                        ₹{Number(e.amount).toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map((e, i) => {
+                    const cancelAllowed = canCancel(e.raw, role, 'receipt')
+                    return (
+                      <tr key={e.id + e.type} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-green-50/20 ${e.is_cancelled ? 'opacity-50' : ''}`}>
+                        <td className="table-cell text-xs whitespace-nowrap">{formatDate(e.date)}</td>
+                        <td className="table-cell text-xs font-mono text-gray-500">{e.ref_no || '—'}</td>
+                        <td className="table-cell text-xs">
+                          <div className="font-medium">{e.head}</div>
+                          {e.sub_head && <div className="text-gray-400">{e.sub_head}</div>}
+                        </td>
+                        <td className="table-cell text-sm max-w-xs truncate">{e.description || '—'}</td>
+                        <td className="table-cell text-xs capitalize">{e.mode}</td>
+                        <td className="table-cell text-xs text-gray-500">{e.account}</td>
+                        <td className="table-cell text-right font-semibold text-green-700">
+                          ₹{Number(e.amount).toLocaleString('en-IN')}
+                        </td>
+                        <td className="table-cell">
+                          {cancelAllowed && (
+                            <button onClick={() => setCancelModal({ entry: e, type: e.type })}
+                              className="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded font-medium flex items-center gap-1">
+                              <XCircle className="w-3 h-3" /> Cancel
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                   <tr className="bg-green-900 text-white font-semibold">
-                    <td className="px-4 py-2 text-sm" colSpan={6}>Total Income — {MONTHS[filterMonth - 1]} {filterYear}</td>
+                    <td className="px-4 py-2 text-sm" colSpan={7}>Total Income — {MONTHS[filterMonth - 1]} {filterYear}</td>
                     <td className="px-4 py-2 text-right text-sm">₹{totalIncome.toLocaleString('en-IN')}</td>
                   </tr>
                 </>
@@ -233,6 +268,14 @@ export default function IncomeRegister() {
       )}
       {printVoucher && (
         <VoucherPrint voucher={printVoucher} org={currentOrg} onClose={() => setPrintVoucher(null)} />
+      )}
+      {cancelModal && (
+        <CancelEditModal
+          mode="cancel"
+          entry={cancelModal.entry}
+          onConfirm={handleCancel}
+          onClose={() => setCancelModal(null)}
+        />
       )}
     </div>
   )

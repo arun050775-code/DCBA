@@ -3,24 +3,25 @@ import { useAuth } from '../context/AuthContext'
 import {
   Scale, LayoutDashboard, Building2, Users, BookOpen,
   IndianRupee, FileText, Settings, LogOut, UserCheck,
-  BarChart3, Mail, AlertCircle, UserPlus, CreditCard, Bell, Landmark
+  BarChart3, Mail, AlertCircle, UserPlus, CreditCard, Bell, Landmark, ClipboardList
 } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin','cashier','management'] },
-  { path: '/members', label: 'Members', icon: Users, roles: ['admin','cashier','management'] },
-  { path: '/applications', label: 'Applications', icon: UserPlus, roles: ['admin','cashier'] },
-  { path: '/grievances', label: 'Grievances', icon: AlertCircle, roles: ['admin','cashier','management'] },
-  { path: '/notices', label: 'Notice Board', icon: Bell, roles: ['admin','cashier','management'] },
-  { path: '/rent', label: 'Rent Tracker', icon: Building2, roles: ['admin','cashier'] },
-  { path: '/cash-bank', label: 'Cash & Bank', icon: IndianRupee, roles: ['admin','cashier'] },
-  { path: '/income', label: 'Income Register', icon: CreditCard, roles: ['admin','cashier'] },
-  { path: '/cheques-in-hand', label: 'Cheques in Hand', icon: Landmark, roles: ['admin','cashier'] },
-  { path: '/expenditure', label: 'Expenditure', icon: FileText, roles: ['admin','cashier'] },
-  { path: '/payroll', label: 'Payroll', icon: UserCheck, roles: ['admin','cashier'] },
-  { path: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin','cashier','management'] },
-  { path: '/experience-letter', label: 'Experience Letter', icon: Mail, roles: ['admin','cashier'] },
-  { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: BookOpen, roles: ['admin'] },
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin','cashier','supervisor','accountant','management'] },
+  { path: '/members', label: 'Members', icon: Users, roles: ['admin','cashier','supervisor','accountant'] },
+  { path: '/applications', label: 'Applications', icon: UserPlus, roles: ['admin','cashier','supervisor'] },
+  { path: '/grievances', label: 'Grievances', icon: AlertCircle, roles: ['admin','cashier','supervisor','management'] },
+  { path: '/notices', label: 'Notice Board', icon: Bell, roles: ['admin','cashier','supervisor','accountant','management'] },
+  { path: '/rent', label: 'Rent Tracker', icon: Building2, roles: ['admin','cashier','supervisor','accountant'] },
+  { path: '/cash-bank', label: 'Cash & Bank', icon: IndianRupee, roles: ['admin','supervisor','accountant'] },
+  { path: '/income', label: 'Income Register', icon: CreditCard, roles: ['admin','supervisor','accountant'] },
+  { path: '/cheques-in-hand', label: 'Cheques in Hand', icon: Landmark, roles: ['admin','cashier','supervisor','accountant'] },
+  { path: '/expenditure', label: 'Expenditure', icon: FileText, roles: ['admin','supervisor','accountant'] },
+  { path: '/payroll', label: 'Payroll', icon: UserCheck, roles: ['admin','accountant'] },
+  { path: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin','supervisor','accountant','management'] },
+  { path: '/experience-letter', label: 'Experience Letter', icon: Mail, roles: ['admin','cashier','supervisor'] },
+  { path: '/audit-log', label: 'Audit Trail', icon: ClipboardList, roles: ['admin','accountant'] },
+  { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: BookOpen, roles: ['admin','accountant'] },
   { path: '/users', label: 'User Management', icon: Users, roles: ['admin'] },
   { path: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
 ]

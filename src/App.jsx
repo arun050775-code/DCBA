@@ -19,6 +19,7 @@ import Payroll from './components/Payroll'
 import ExperienceLetter from './components/ExperienceLetter'
 import ComingSoon from './components/ComingSoon'
 import ChequesInHand from './components/ChequesInHand'
+import AuditLog from './components/AuditLog'
 
 function PrivateLayout() {
   const { user, loading, userRole } = useAuth()
@@ -61,6 +62,7 @@ function PrivateLayout() {
           <Route path="/experience-letter" element={<ExperienceLetter />} />
           <Route path="/chart-of-accounts" element={<ChartOfAccounts />} />
           <Route path="/users" element={<UserManagement />} />
+          <Route path="/audit-log" element={<AuditLog />} />
           <Route path="/cheques-in-hand" element={<ChequesInHand />} />
           <Route path="/settings" element={<ComingSoon title="Settings" />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

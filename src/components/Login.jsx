@@ -57,25 +57,25 @@ export default function Login() {
 
         <div className="h-0.5 bg-gradient-to-r from-yellow-500 via-yellow-300 to-transparent mb-5 rounded-full" />
 
-        <p className="text-yellow-400 text-xs font-bold uppercase tracking-widest mb-4">Management Committee</p>
+        <p className="text-yellow-400 text-xs font-bold uppercase tracking-widest mb-4 text-center">Management Committee 2025-26</p>
 
-        <div className="space-y-2">
-          {COMMITTEE.map((m, idx) => (
-            <div key={m.name} className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 hover:bg-white/10 transition-colors">
-              <div className="w-9 h-9 rounded-full border-2 border-yellow-500 flex items-center justify-center flex-shrink-0"
+        <div className="grid grid-cols-4 gap-3">
+          {COMMITTEE.slice(0, 12).map((m, idx) => (
+            <div key={m.name} className="flex flex-col items-center text-center group">
+              <div className="w-12 h-12 rounded-full border-2 border-yellow-500 flex items-center justify-center mb-1 relative shadow-lg group-hover:border-yellow-300 transition-all"
                 style={{ background: 'linear-gradient(135deg, #1a3a5c, #2e5f8a)' }}>
                 <span className="text-yellow-400 font-bold text-xs">{getInitials(m.name)}</span>
+                {idx === 0 && (
+                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-blue-900 w-4 h-4 rounded-full flex items-center justify-center font-bold" style={{ fontSize: '0.5rem' }}>★</span>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-xs font-bold truncate">{m.name}</p>
-                <p className="text-yellow-400 text-xs">{m.designation}</p>
-              </div>
-              {idx === 0 && <span className="text-xs bg-yellow-500 text-blue-900 px-2 py-0.5 rounded-full font-bold flex-shrink-0">★</span>}
+              <p className="text-white font-bold leading-tight" style={{ fontSize: '0.58rem' }}>{m.name}</p>
+              <p className="text-yellow-400 leading-tight mt-0.5" style={{ fontSize: '0.52rem' }}>{m.designation}</p>
             </div>
           ))}
         </div>
 
-        <p className="text-blue-600 text-xs mt-4 italic">* Photographs will be updated on receipt</p>
+        <p className="text-blue-600 text-xs mt-4 italic text-center">* Photographs will be updated on receipt</p>
 
         <div className="mt-auto pt-4 border-t border-white/10">
           <p className="text-blue-600 text-xs text-center">© 2026 Dwarka Court Bar Association</p>

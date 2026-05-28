@@ -63,7 +63,9 @@ function ReceiptBody({ receipt, copy, isReprint }) {
       <div style={{ display: 'flex', gap: '16px', marginBottom: '5px' }}>
         <span><strong>Mode:</strong> {receipt.payment_mode?.toUpperCase()}</span>
         {receipt.cheque_no && <span><strong>Chq No:</strong> {receipt.cheque_no}</span>}
+        {receipt.cheque_date && <span><strong>Chq Date:</strong> {formatDate(receipt.cheque_date)}</span>}
         {receipt.bank_name && <span><strong>Bank:</strong> {receipt.bank_name}</span>}
+        {receipt.transaction_id && <span><strong>Txn ID:</strong> {receipt.transaction_id}</span>}
       </div>
 
       {receipt.remarks && (

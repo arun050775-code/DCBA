@@ -13,7 +13,8 @@ import VendorModal from './rent/VendorModal'
 import VendorLedger from './rent/VendorLedger'
 import ReceiptPrint from './rent/ReceiptPrint'
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+import { computeOutstanding, paidUptoLabel, monthsDue } from '../utils/duesCalc'
+'February','March','April','May','June','July','August','September','October','November','December']
 const CATEGORIES = ['All','Typist Pool 1','Typist Pool 2','Photostat Vendor','Tea Stall','Stationery','Canteen / Kiosk']
 
 export default function RentTracker() {
@@ -61,20 +62,15 @@ export default function RentTracker() {
   // Summary stats
   const activeVendors = vendors.filter(v => v.status === 'active')
   const totalMonthlyRent = activeVendors.reduce((s, v) => s + (v.monthly_rent || 0), 0)
-  const totalArrears = activeVendors.reduce((s, v) => s + (v.opening_arrears || 0), 0)
-  const highArrears = activeVendors.filter(v => v.opening_arrears >= 24000).length
-
-  function getPaidUptoLabel(vendor) {
-    if (!vendor.paid_upto_month || !vendor.paid_upto_year) return 'Not set'
-    return `${MONTHS[vendor.paid_upto_month - 1]} ${vendor.paid_upto_year}`
-  }
+  const totalOutstanding = activeVendors.reduce((s, v) => s + computeOutstanding(v), 0)
+  const highArrears = activeVendors.filter(v => computeOutstanding(v) >= 24000).length
 
   function getArrearsBadge(vendor) {
     if (vendor.status !== 'active') return null
-    const arr = vendor.opening_arrears || 0
-    if (arr === 0) return <span className="badge-clear">Clear</span>
-    if (arr >= 24000) return <span className="badge-arrears">⚠ ₹{arr.toLocaleString('en-IN')}</span>
-    return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">₹{arr.toLocaleString('en-IN')}</span>
+    const outstanding = computeOutstanding(vendor)
+    if (outstanding === 0) return <span className="badge-clear">Clear</span>
+    if (outstanding >= 24000) return <span className="badge-arrears">⚠ ₹{outstanding.toLocaleString('en-IN')}</span>
+    return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">₹{outstanding.toLocaleString('en-IN')}</span>
   }
 
   return (
@@ -99,7 +95,7 @@ export default function RentTracker() {
         {[
           { label: 'Active Vendors', value: activeVendors.length, color: 'blue', icon: Building2 },
           { label: 'Monthly Rent Roll', value: `₹${totalMonthlyRent.toLocaleString('en-IN')}`, color: 'green', icon: IndianRupee },
-          { label: 'Total Arrears', value: `₹${totalArrears.toLocaleString('en-IN')}`, color: 'red', icon: AlertCircle },
+          { label: 'Total Outstanding', value: `₹${totalOutstanding.toLocaleString('en-IN')}`, color: 'red', icon: AlertCircle },
           { label: 'High Arrears (24k+)', value: highArrears, color: 'orange', icon: XCircle },
         ].map(s => {
           const Icon = s.icon
@@ -165,7 +161,7 @@ export default function RentTracker() {
                     <td className="table-cell font-semibold">
                       {vendor.monthly_rent > 0 ? `₹${vendor.monthly_rent.toLocaleString('en-IN')}` : <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="table-cell text-sm">{getPaidUptoLabel(vendor)}</td>
+                    <td className="table-cell text-sm">{paidUptoLabel(vendor)}</td>
                     <td className="table-cell">{getArrearsBadge(vendor)}</td>
                     <td className="table-cell">
                       {vendor.status === 'active' && <span className="badge-active">Active</span>}

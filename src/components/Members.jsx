@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
 import { Users, Plus, Search, Eye, IndianRupee, CreditCard, AlertCircle, CheckCircle, Printer, Edit } from 'lucide-react'
+import MemberReceiptPrint from './members/MemberReceiptPrint'
 
 const ADMISSION_FEE = 600
 const ANNUAL_FEE = 600
@@ -521,6 +522,11 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     pay_annual: !member.annual_fee_paid,
     pay_icard: false,
     date: new Date().toISOString().split('T')[0],
+    cheque_no: '',
+    cheque_date: new Date().toISOString().split('T')[0],
+    bank_name: '',
+    transaction_id: '',
+    remarks: '',
   })
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState(null)
@@ -591,6 +597,10 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
         cash_account_id: cashId,
         bank_account_id: bankId,
         receipt_no: receiptNo,
+        cheque_no: form.payment_mode === 'cheque' ? form.cheque_no : null,
+        cheque_date: form.payment_mode === 'cheque' ? form.cheque_date : null,
+        transaction_id: ['upi','neft'].includes(form.payment_mode) ? form.transaction_id : null,
+        cheque_status: form.payment_mode === 'cheque' ? 'pending' : null,
       })
       if (incErr) throw incErr
 
@@ -616,6 +626,11 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
         amount: totalToPay,
         paymentMode: form.payment_mode.toUpperCase(),
         amountInWords: toWords(totalToPay) + ' Only',
+        cheque_no: form.cheque_no,
+        cheque_date: form.cheque_date,
+        bank_name: form.bank_name,
+        transaction_id: form.transaction_id,
+        remarks: form.remarks,
       })
     } catch (err) {
       toast.error(err.message)
@@ -623,74 +638,13 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     setSaving(false)
   }
 
-  // Receipt view
+  // Receipt view — use pre-printed format
   if (receipt) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-          <div className="px-6 py-4 border-b flex items-center justify-between bg-green-50">
-            <h3 className="font-bold text-green-800">✅ Payment Received!</h3>
-            <button onClick={() => { onSuccess(); onClose() }} className="text-gray-400 hover:text-gray-600">✕</button>
-          </div>
-
-          {/* Receipt */}
-          <div id="receipt-print" className="px-6 py-4 space-y-3">
-            <div className="text-center border-b pb-3">
-              <p className="font-bold text-blue-900 text-base">DWARKA COURT BAR ASSOCIATION</p>
-              <p className="text-xs text-gray-500">Dwarka Courts Complex, New Delhi</p>
-              <p className="text-lg font-bold text-gray-800 mt-2">RECEIPT</p>
-            </div>
-
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Receipt No.</span>
-              <span className="font-bold text-blue-700">{receipt.receiptNo}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Date</span>
-              <span className="font-semibold">{new Date(receipt.date).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Received from</span>
-              <span className="font-semibold text-right">{receipt.member.member_name}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Member No.</span>
-              <span className="font-semibold">{receipt.member.member_no}</span>
-            </div>
-
-            <div className="border-t border-b py-2 space-y-1">
-              <p className="text-xs font-semibold text-gray-600 mb-1">Towards:</p>
-              {receipt.items.map((item, i) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span className="text-gray-700">• {item}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Amount</span>
-              <span className="text-2xl font-bold text-green-700">₹{Number(receipt.amount).toLocaleString('en-IN')}</span>
-            </div>
-            <div className="text-xs text-gray-500 italic">{receipt.amountInWords}</div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Payment Mode</span>
-              <span className="font-semibold">{receipt.paymentMode}</span>
-            </div>
-
-            <div className="text-right text-xs text-gray-400 pt-2 border-t">
-              <p className="font-semibold text-gray-600">Authorised Signatory</p>
-              <p>DCBA</p>
-            </div>
-          </div>
-
-          <div className="px-6 py-4 border-t flex gap-3">
-            <button onClick={() => window.print()}
-              className="btn-primary flex-1">🖨️ Print Receipt</button>
-            <button onClick={() => { onSuccess(); onClose() }}
-              className="btn-secondary flex-1">Close</button>
-          </div>
-        </div>
-      </div>
+      <MemberReceiptPrint
+        receipt={receipt}
+        onClose={() => { onSuccess(); onClose() }}
+      />
     )
   }
 
@@ -803,6 +757,41 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
             <label className="label">Date</label>
             <input type="date" className="input" value={form.date}
               onChange={e => setForm({ ...form, date: e.target.value })} />
+          </div>
+
+          {form.payment_mode === 'cheque' && (
+            <div className="space-y-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Cheque Details</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Cheque No. *</label>
+                  <input className="input" value={form.cheque_no} onChange={e => setForm({...form, cheque_no: e.target.value})} placeholder="e.g. 012345" />
+                </div>
+                <div>
+                  <label className="label">Cheque Date</label>
+                  <input type="date" className="input" value={form.cheque_date} onChange={e => setForm({...form, cheque_date: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Bank Name</label>
+                <input className="input" value={form.bank_name} onChange={e => setForm({...form, bank_name: e.target.value})} placeholder="e.g. SBI, HDFC" />
+              </div>
+              <p className="text-xs text-blue-600">⚠ Cheque will appear in Cheques in Hand until deposited.</p>
+            </div>
+          )}
+
+          {['upi','neft'].includes(form.payment_mode) && (
+            <div>
+              <label className="label">Transaction ID *</label>
+              <input className="input font-mono" value={form.transaction_id}
+                onChange={e => setForm({...form, transaction_id: e.target.value})}
+                placeholder={form.payment_mode === 'upi' ? 'UPI Ref No.' : 'NEFT/IMPS Ref No.'} />
+            </div>
+          )}
+
+          <div>
+            <label className="label">Remarks</label>
+            <input className="input" value={form.remarks} onChange={e => setForm({...form, remarks: e.target.value})} placeholder="Optional" />
           </div>
 
           <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex justify-between items-center">

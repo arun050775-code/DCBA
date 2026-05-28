@@ -518,8 +518,7 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     payment_mode: 'cash',
     cash_account_id: '',
     bank_account_id: '',
-    pay_admission: member.admission_fee_paid !== true,
-    pay_annual: member.annual_fee_paid !== true,
+    pay_annual: false,
     pay_icard: false,
     date: new Date().toISOString().split('T')[0],
     cheque_no: '',
@@ -543,7 +542,12 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
     if (cash?.[0]) setForm(f => ({ ...f, cash_account_id: cash[0].id }))
   }
 
-  const outstandingTotal = Number(member.outstanding_fees) || 0
+  const baseOutstanding = Number(member.outstanding_fees) || 0
+
+  const outstandingTotal =
+    baseOutstanding +
+    (form.pay_annual ? ANNUAL_FEE : 0) +
+    (form.pay_icard ? ICARD_FEE : 0)
 
   const totalToPay = collectMode === 'advance'
     ? Number(advanceAmount) || 0
@@ -578,8 +582,8 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
       // Build description
       const items = []
       if (collectMode === 'outstanding') {
-        if (form.pay_admission && !member.admission_fee_paid) items.push(`Admission Fee ₹${ADMISSION_FEE}`)
-        if (form.pay_annual && !member.annual_fee_paid) items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
+        if (baseOutstanding > 0) items.push(`Accrued Dues ₹${baseOutstanding}`)
+        if (form.pay_annual) items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
         if (form.pay_icard) items.push(`I-Card Fee ₹${ICARD_FEE}`)
       } else {
         items.push(`Advance Payment ₹${totalToPay}`)
@@ -601,18 +605,28 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
       })
       if (incErr) throw incErr
 
-      // Update member
+      // Compute new outstanding after collection
       const newOutstanding = collectMode === 'advance'
-        ? Math.max(0, Number(member.outstanding_fees) - totalToPay)
-        : Math.max(0, Number(member.outstanding_fees) - outstandingTotal)
+        ? Math.max(0, baseOutstanding - totalToPay)
+        : 0  // full O/S collected
 
-      await supabase.from('dcba_members').update({
+      // If annual subscription paid, push membership_date anniversary by 1 year
+      const memberUpdates = {
         outstanding_fees: newOutstanding,
-        admission_fee_paid: collectMode === 'outstanding' && form.pay_admission ? true : member.admission_fee_paid,
-        annual_fee_paid: collectMode === 'outstanding' && form.pay_annual ? true : member.annual_fee_paid,
-        icard_issued: collectMode === 'outstanding' && form.pay_icard ? true : member.icard_issued,
         last_fee_paid_date: form.date,
-      }).eq('id', member.id)
+        admission_fee_paid: (collectMode === 'outstanding' && form.pay_admission) ? true : member.admission_fee_paid,
+        annual_fee_paid: (collectMode === 'outstanding' && form.pay_annual) ? true : member.annual_fee_paid,
+        icard_issued: (collectMode === 'outstanding' && form.pay_icard) ? true : member.icard_issued,
+      }
+
+      // Push membership date by 1 year if annual subscription collected
+      if (collectMode === 'outstanding' && form.pay_annual && member.membership_date) {
+        const d = new Date(member.membership_date)
+        d.setFullYear(d.getFullYear() + 1)
+        memberUpdates.membership_date = d.toISOString().split('T')[0]
+      }
+
+      await supabase.from('dcba_members').update(memberUpdates).eq('id', member.id)
 
       // Show receipt
       setReceipt({
@@ -676,33 +690,35 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
           {/* Outstanding items */}
           {collectMode === 'outstanding' && (
             <div className="space-y-2">
-              {!member.admission_fee_paid && (
-                <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
-                  <input type="checkbox" checked={form.pay_admission}
-                    onChange={e => setForm({ ...form, pay_admission: e.target.checked })}
-                    className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm">Admission Fee (one-time)</span>
-                  <span className="ml-auto font-bold text-blue-700">₹{ADMISSION_FEE}</span>
-                </label>
+              {/* Base outstanding */}
+              {baseOutstanding > 0 && (
+                <div className="flex items-center justify-between bg-orange-50 rounded-lg p-3">
+                  <span className="text-sm text-orange-700">Accrued dues till date</span>
+                  <span className="font-bold text-orange-700">₹{baseOutstanding}</span>
+                </div>
               )}
-              {!member.annual_fee_paid && (
-                <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
-                  <input type="checkbox" checked={form.pay_annual}
-                    onChange={e => setForm({ ...form, pay_annual: e.target.checked })}
-                    className="w-4 h-4 text-green-600" />
-                  <span className="text-sm">Annual Subscription</span>
-                  <span className="ml-auto font-bold text-green-700">₹{ANNUAL_FEE}</span>
-                </label>
-              )}
-              {!member.icard_issued && (
-                <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
-                  <input type="checkbox" checked={form.pay_icard}
-                    onChange={e => setForm({ ...form, pay_icard: e.target.checked })}
-                    className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm">I-Card Fee</span>
-                  <span className="ml-auto font-bold text-purple-700">₹{ICARD_FEE}</span>
-                </label>
-              )}
+              {/* Annual Subscription — always shown, unchecked by default */}
+              <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
+                <input type="checkbox" checked={form.pay_annual}
+                  onChange={e => setForm({ ...form, pay_annual: e.target.checked })}
+                  className="w-4 h-4 text-green-600" />
+                <div className="flex-1">
+                  <span className="text-sm font-medium">Annual Subscription</span>
+                  <p className="text-xs text-green-600">Tick to collect next year's subscription — pushes due date by 1 year</p>
+                </div>
+                <span className="font-bold text-green-700">₹{ANNUAL_FEE}</span>
+              </label>
+              {/* I-Card — always shown, optional */}
+              <label className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 cursor-pointer">
+                <input type="checkbox" checked={form.pay_icard}
+                  onChange={e => setForm({ ...form, pay_icard: e.target.checked })}
+                  className="w-4 h-4 text-purple-600" />
+                <div className="flex-1">
+                  <span className="text-sm font-medium">I-Card Fee</span>
+                  <p className="text-xs text-purple-500">Tick if member is requesting I-Card</p>
+                </div>
+                <span className="font-bold text-purple-700">₹{ICARD_FEE}</span>
+              </label>
             </div>
           )}
 

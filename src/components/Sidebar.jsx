@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import {
   Scale, LayoutDashboard, Building2, Users, BookOpen,
   IndianRupee, FileText, Settings, LogOut, UserCheck,
-  BarChart3, Mail, AlertCircle, UserPlus, CreditCard, Bell, Landmark, ClipboardList
+  BarChart3, Mail, AlertCircle, UserPlus, CreditCard, Bell, Landmark, ClipboardList, Lock
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { path: '/income', label: 'Income Register', icon: CreditCard, roles: ['admin','supervisor','accountant'] },
   { path: '/day-end-report', label: 'Day End Report', icon: FileText, roles: ['admin','cashier','supervisor'] },
   { path: '/cheques-in-hand', label: 'Cheques in Hand', icon: Landmark, roles: ['admin','cashier','supervisor','accountant'] },
+  { path: '/locker-seats', label: 'Locker & Seats', icon: Lock, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/expenditure', label: 'Expenditure', icon: FileText, roles: ['admin','supervisor','accountant'] },
   { path: '/payroll', label: 'Payroll', icon: UserCheck, roles: ['admin','accountant'] },
   { path: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin','supervisor','accountant','management'] },

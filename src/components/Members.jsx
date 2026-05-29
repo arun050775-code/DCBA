@@ -594,11 +594,12 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
       // Build description
       const items = []
       if (collectMode === 'outstanding') {
-        // New member — admission not yet paid
-        if (member.admission_fee_paid !== true && baseOutstanding > 0) {
+        // New member = admission not paid AND never made a payment before
+        const isNewMember = member.admission_fee_paid !== true && !member.last_fee_paid_date
+        
+        if (isNewMember && baseOutstanding > 0) {
           items.push(`Admission Fee ₹${ADMISSION_FEE}`)
           const remainingAfterAdmi = baseOutstanding - ADMISSION_FEE
-          // Check if I-Card included (₹50)
           if (remainingAfterAdmi === ANNUAL_FEE + ICARD_FEE) {
             items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
             items.push(`I-Card Fee ₹${ICARD_FEE}`)

@@ -36,8 +36,9 @@ export default function RentTracker() {
   const [ledgerVendor, setLedgerVendor] = useState(null)
   const [printReceipt, setPrintReceipt] = useState(null)
 
-  const isAdmin = userRole?.role === 'admin'
-  const isCashier = ['admin','cashier'].includes(userRole?.role)
+  const isAdmin = ['admin','cashier','supervisor','accountant'].includes(userRole?.role)
+  const canCollect = ['admin','cashier','supervisor'].includes(userRole?.role)
+  const isCashier = ['admin','cashier','supervisor'].includes(userRole?.role)
 
   useEffect(() => { if (currentOrg) fetchData() }, [currentOrg])
 
@@ -84,7 +85,7 @@ export default function RentTracker() {
           </h1>
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
         </div>
-        {isAdmin && (
+        {['admin','cashier','supervisor'].includes(userRole?.role) && (
           <button onClick={() => setShowAddVendor(true)} className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> Add Vendor
           </button>

@@ -27,6 +27,13 @@ const ADMISSION_FEE = 600
 const ANNUAL_FEE = 600
 const ICARD_FEE = 50
 
+// Extract amount from description string e.g. "Admission Fee ₹600"
+function extractAmount(str, keyword) {
+  const regex = new RegExp(keyword + '[^₹]*₹([\\d,]+)', 'i')
+  const m = str.match(regex)
+  return m ? parseInt(m[1].replace(',','')) : 0
+}
+
 // Map entry to head keys with correct amount splitting
 function mapToHead(entry) {
   const result = {}
@@ -43,36 +50,58 @@ function mapToHead(entry) {
     return result
   }
 
-  // New member — items_collected has multiple fees
-  if (items.includes('admission') || items.includes('annual subscription') || items.includes('i-card')) {
-    if (items.includes('admission')) result.admi += ADMISSION_FEE
-    if (items.includes('annual subscription') || items.includes('subscription')) result.sub += ANNUAL_FEE
-    if (items.includes('i-card')) result.icard += ICARD_FEE
-    // Any remaining goes to subscription (rounding / accruals)
-    const allocated = result.admi + result.sub + result.icard
-    if (amt > allocated) result.sub += (amt - allocated)
+  // Bounce reversal — skip or put in others
+  if (desc.includes('bounce reversal')) {
+    result.others = amt
     return result
   }
 
-  // Accrued dues / O/S collection → subscription
-  if (items.includes('accrued') || items.includes('arrears') || desc.includes('accrued dues')) {
-    result.sub = amt
+  // Try to parse from items_collected first
+  const hasItems = items.length > 0
+  const hasAdmi = items.includes('admission') || desc.includes('admission fee')
+  const hasSub = items.includes('annual subscription') || items.includes('subscription') || desc.includes('annual subscription') || desc.includes('subscription')
+  const hasIcard = items.includes('i-card') || items.includes('icard') || desc.includes('i-card') || desc.includes('i card')
+  const hasAccrued = items.includes('accrued') || desc.includes('accrued dues')
+
+  if (hasAdmi || hasSub || hasIcard || hasAccrued) {
+    // Try to extract exact amounts from description
+    const admiAmt = extractAmount(entry.description || '', 'Admission Fee') || (hasAdmi ? ADMISSION_FEE : 0)
+    const subAmt = extractAmount(entry.description || '', 'Annual Subscription') ||
+                   extractAmount(entry.description || '', 'Subscription') ||
+                   extractAmount(entry.description || '', 'Accrued') || 0
+    const icardAmt = extractAmount(entry.description || '', 'I.Card') ||
+                     extractAmount(entry.description || '', 'I-Card') || (hasIcard ? ICARD_FEE : 0)
+
+    const parsed = admiAmt + subAmt + icardAmt
+
+    if (parsed > 0) {
+      result.admi = admiAmt
+      result.sub = subAmt
+      result.icard = icardAmt
+      // Remaining goes to subscription
+      if (amt > parsed) result.sub += (amt - parsed)
+    } else {
+      // Fallback: use fixed amounts
+      if (hasAdmi) result.admi = ADMISSION_FEE
+      if (hasSub || hasAccrued) result.sub = amt - (hasAdmi ? ADMISSION_FEE : 0) - (hasIcard ? ICARD_FEE : 0)
+      if (hasIcard) result.icard = ICARD_FEE
+      if (result.sub < 0) result.sub = 0
+      // Remaining → subscription
+      const allocated = result.admi + result.sub + result.icard
+      if (amt > allocated) result.sub += (amt - allocated)
+    }
     return result
   }
 
   // Advance payment → subscription
   if (desc.includes('advance') || head.includes('advance')) {
-    result.sub = amt
-    return result
+    result.sub = amt; return result
   }
 
-  // Single items
-  if (head.includes('admission') || desc.includes('admission fee')) { result.admi = amt; return result }
-  if (head.includes('subscription') || desc.includes('subscription')) { result.sub = amt; return result }
-  if (head.includes('i-card') || head.includes('icard') || desc.includes('i card')) { result.icard = amt; return result }
+  // Single head mappings
   if (head.includes('nomination') || desc.includes('nomination')) { result.nomn = amt; return result }
-  if (head.includes('cost') || head.includes('misc') || head.includes('welfare') || desc.includes('welfare') || desc.includes('cost')) { result.cost = amt; return result }
-  if (head.includes('sd seat') || desc.includes('sd seat')) { result.sd_seats = amt; return result }
+  if (head.includes('cost') || head.includes('misc') || head.includes('welfare') || desc.includes('welfare') || desc.includes('cost imposed')) { result.cost = amt; return result }
+  if (head.includes('sd seat') || desc.includes('sd seat') || desc.includes('security deposit seat')) { result.sd_seats = amt; return result }
   if (head.includes('library') || desc.includes('library')) { result.library = amt; return result }
   if (head.includes('locker') || desc.includes('locker')) { result.sd_locker = amt; return result }
 

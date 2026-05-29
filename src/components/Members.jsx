@@ -11,6 +11,18 @@ const ICARD_FEE = 50
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+function numberToWords(num) {
+  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
+  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
+  if (num === 0) return 'Zero'
+  if (num < 20) return ones[num]
+  if (num < 100) return tens[Math.floor(num/10)] + (num%10 ? ' ' + ones[num%10] : '')
+  if (num < 1000) return ones[Math.floor(num/100)] + ' Hundred' + (num%100 ? ' ' + numberToWords(num%100) : '')
+  if (num < 100000) return numberToWords(Math.floor(num/1000)) + ' Thousand' + (num%1000 ? ' ' + numberToWords(num%1000) : '')
+  if (num < 10000000) return numberToWords(Math.floor(num/100000)) + ' Lakh' + (num%100000 ? ' ' + numberToWords(num%100000) : '')
+  return numberToWords(Math.floor(num/10000000)) + ' Crore' + (num%10000000 ? ' ' + numberToWords(num%10000000) : '')
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   const d = new Date(dateStr)
@@ -877,7 +889,7 @@ function MemberDetailModal({ member, onClose, org }) {
       date: entry.entry_date,
       member,
       amount: Number(entry.amount),
-      amountInWords: toWords(Number(entry.amount)) + ' Only',
+      amountInWords: numberToWords(Number(entry.amount)) + ' Only',
       items: entry.items_collected ? entry.items_collected.split(', ') : [entry.description],
       paymentMode: (entry.payment_mode || 'cash').toUpperCase(),
       cheque_no: entry.cheque_no,

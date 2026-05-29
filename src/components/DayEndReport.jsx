@@ -5,9 +5,64 @@ import toast from 'react-hot-toast'
 import { FileText, Printer, Download, Search, List, BarChart2, Calendar } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const CURRENT_YEAR = new Date().getFullYear()
+
+// Income head columns — legacy DCBA format
+const HEADS = [
+  { key: 'admi',       label: 'Admi.\nFee',      short: 'Admi.' },
+  { key: 'sub',        label: 'Subscription',     short: 'Sub.' },
+  { key: 'rent',       label: 'Rent',             short: 'Rent' },
+  { key: 'nomn',       label: "Nom'n.\nFee",      short: 'Nom.' },
+  { key: 'cost',       label: 'Cost/\nMisc',      short: 'Cost/Misc' },
+  { key: 'sd_seats',   label: 'SD.\nSeats',       short: 'SD.Seats' },
+  { key: 'library',    label: 'Library',          short: 'Library' },
+  { key: 'icard',      label: 'I.\nCard',         short: 'I.Card' },
+  { key: 'sd_locker',  label: 'SD.\nLocker',      short: 'SD.Locker' },
+  { key: 'others',     label: 'Others',           short: 'Others' },
+]
+
+// Map entry to head keys
+function mapToHead(entry) {
+  const desc = (entry.description || '').toLowerCase()
+  const head = (entry.head || '').toLowerCase()
+  const items = (entry.items_collected || '').toLowerCase()
+
+  const result = {}
+  HEADS.forEach(h => result[h.key] = 0)
+
+  const amt = entry.amount
+
+  if (items.includes('admission') || head.includes('admission') || desc.includes('admission')) {
+    result.admi = amt
+  } else if (items.includes('annual subscription') || items.includes('subscription') || head.includes('subscription') || desc.includes('subscription')) {
+    result.sub = amt
+  } else if (entry.source === 'rent' || head.includes('rent') || desc.includes('rent')) {
+    result.rent = amt
+  } else if (items.includes('i-card') || head.includes('i-card') || head.includes('icard') || desc.includes('i card') || desc.includes('icard')) {
+    result.icard = amt
+  } else if (head.includes('nomination') || head.includes("nom'n") || desc.includes('nomination')) {
+    result.nomn = amt
+  } else if (head.includes('cost') || head.includes('misc') || head.includes('welfare') || desc.includes('welfare') || desc.includes('cost')) {
+    result.cost = amt
+  } else if (head.includes('sd seat') || head.includes('security deposit seat') || desc.includes('sd seat')) {
+    result.sd_seats = amt
+  } else if (head.includes('library') || desc.includes('library')) {
+    result.library = amt
+  } else if (head.includes('sd locker') || head.includes('locker') || desc.includes('locker')) {
+    result.sd_locker = amt
+  } else {
+    result.others = amt
+  }
+
+  // If items_collected has multiple — split proportionally (simple: admission + subscription + icard)
+  if (items.includes('accrued dues') || items.includes('arrears')) {
+    Object.keys(result).forEach(k => result[k] = 0)
+    result.sub = amt
+  }
+
+  return result
+}
 
 function formatDate(d) {
   if (!d) return '—'
@@ -15,8 +70,9 @@ function formatDate(d) {
   return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`
 }
 
-function isCash(e) { return e.mode === 'CASH' }
-function isBank(e) { return !isCash(e) }
+function isCash(e) {
+  return (e.mode || '').toUpperCase() === 'CASH'
+}
 
 export default function DayEndReport() {
   const { currentOrg, userRole } = useAuth()
@@ -24,19 +80,19 @@ export default function DayEndReport() {
   const isSupervisor = ['admin','supervisor'].includes(role)
 
   const today = new Date().toISOString().split('T')[0]
-  const [view, setView] = useState('detail') // detail | daily | monthly
+  const [view, setView] = useState('detail')
   const [fromDate, setFromDate] = useState(today)
   const [toDate, setToDate] = useState(today)
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
   const [filterYear, setFilterYear] = useState(CURRENT_YEAR)
-  const [cashierFilter, setCashierFilter] = useState('mine')
-  const [printMode, setPrintMode] = useState('both') // cash | bank | both
+  const [cashierFilter, setCashierFilter] = useState(isSupervisor ? 'all' : 'mine')
+  const [printMode, setPrintMode] = useState('both')
   const [cashiers, setCashiers] = useState([])
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(false)
   const printRef = useRef()
 
-  useEffect(() => { if (currentOrg) { fetchCashiers(); fetchReport() } }, [currentOrg])
+  useEffect(() => { if (currentOrg) { fetchCashiers() } }, [currentOrg])
 
   async function fetchCashiers() {
     const { data } = await supabase.from('user_roles')
@@ -64,7 +120,7 @@ export default function DayEndReport() {
         .eq('org_id', currentOrg.id)
         .eq('is_cancelled', false)
         .gte('entry_date', startDate).lte('entry_date', endDate)
-        .order('entry_date')
+        .order('entry_date').order('created_at')
 
       if (!isSupervisor || cashierFilter === 'mine') q = q.eq('created_by', userId)
       else if (cashierFilter !== 'all') q = q.eq('created_by', cashierFilter)
@@ -75,34 +131,35 @@ export default function DayEndReport() {
         .gte('collection_date', startDate).lte('collection_date', endDate)
         .order('collection_date')
 
-      const [{ data: inc }, { data: rent }] = await Promise.all([q, qr])
+      const [{ data: inc, error: e1 }, { data: rent }] = await Promise.all([q, qr])
+      if (e1) throw e1
 
       const combined = [
         ...(inc || []).map(e => ({
           date: e.entry_date,
           receipt_no: e.receipt_no || '—',
-          party: e.description?.split('—')[1]?.split('|')[0]?.trim() || '—',
-          head: e.account_heads?.name || 'Member Fee',
-          description: e.description || '—',
-          remarks: e.remarks || '',
+          party: e.description?.split('—')[1]?.split('|')[0]?.trim() || e.description || '—',
           mode: (e.payment_mode || 'cash').toUpperCase(),
           amount: Number(e.amount),
-          account: e.cash_accounts?.cashier_name || e.bank_accounts?.account_name || '—',
+          head: e.account_heads?.name || 'Member Fee',
+          description: e.description || '',
+          remarks: e.remarks || '',
+          items_collected: e.items_collected || '',
           source: 'income',
         })),
-        ...((isSupervisor && cashierFilter !== 'mine') ? (rent || []).map(r => ({
+        ...((isSupervisor || cashierFilter === 'all') ? (rent || []).map(r => ({
           date: r.collection_date,
           receipt_no: r.receipt_no || '—',
           party: r.vendors?.name || '—',
+          mode: (r.payment_mode || 'cash').toUpperCase(),
+          amount: Number(r.amount),
           head: 'Vendor Rent Income',
           description: `Rent — ${r.months_covered || ''}`,
           remarks: r.remarks || '',
-          mode: (r.payment_mode || 'cash').toUpperCase(),
-          amount: Number(r.amount),
-          account: r.cash_accounts?.cashier_name || r.bank_accounts?.account_name || '—',
+          items_collected: '',
           source: 'rent',
         })) : []),
-      ].sort((a, b) => new Date(a.date) - new Date(b.date))
+      ].sort((a, b) => a.date.localeCompare(b.date) || a.receipt_no.localeCompare(b.receipt_no))
 
       setEntries(combined)
     } catch (err) { toast.error(err.message) }
@@ -112,66 +169,62 @@ export default function DayEndReport() {
   // Filter by print mode
   const filteredEntries = entries.filter(e => {
     if (printMode === 'cash') return isCash(e)
-    if (printMode === 'bank') return isBank(e)
+    if (printMode === 'bank') return !isCash(e)
     return true
   })
 
-  // Head groups
-  const headGroups = filteredEntries.reduce((acc, e) => {
-    if (!acc[e.head]) acc[e.head] = []
-    acc[e.head].push(e)
+  const totalAmount = filteredEntries.reduce((s, e) => s + e.amount, 0)
+  const totalCash = filteredEntries.filter(isCash).reduce((s, e) => s + e.amount, 0)
+  const totalBank = filteredEntries.filter(e => !isCash(e)).reduce((s, e) => s + e.amount, 0)
+
+  // Totals per head
+  function headTotals(list) {
+    const t = {}
+    HEADS.forEach(h => t[h.key] = 0)
+    list.forEach(e => {
+      const m = mapToHead(e)
+      HEADS.forEach(h => t[h.key] += m[h.key])
+    })
+    return t
+  }
+
+  // Daily groups
+  const dailyGroups = filteredEntries.reduce((acc, e) => {
+    if (!acc[e.date]) acc[e.date] = []
+    acc[e.date].push(e)
     return acc
   }, {})
 
-  const totalAmount = filteredEntries.reduce((s, e) => s + e.amount, 0)
-  const totalCash = filteredEntries.filter(isCash).reduce((s, e) => s + e.amount, 0)
-  const totalBank = filteredEntries.filter(isBank).reduce((s, e) => s + e.amount, 0)
+  // Monthly groups
+  const monthlyGroups = filteredEntries.reduce((acc, e) => {
+    const mo = e.date.slice(0, 7) // YYYY-MM
+    if (!acc[mo]) acc[mo] = []
+    acc[mo].push(e)
+    return acc
+  }, {})
 
-  // Daily summary — group by date+head
-  const dailySummary = () => {
-    const days = {}
-    filteredEntries.forEach(e => {
-      if (!days[e.date]) days[e.date] = {}
-      if (!days[e.date][e.head]) days[e.date][e.head] = { cash: 0, bank: 0 }
-      if (isCash(e)) days[e.date][e.head].cash += e.amount
-      else days[e.date][e.head].bank += e.amount
-    })
-    return days
-  }
-
-  // Monthly summary — group by head
-  const monthlySummary = () => {
-    const heads = {}
-    filteredEntries.forEach(e => {
-      if (!heads[e.head]) heads[e.head] = { cash: 0, bank: 0, total: 0 }
-      if (isCash(e)) heads[e.head].cash += e.amount
-      else heads[e.head].bank += e.amount
-      heads[e.head].total += e.amount
-    })
-    return heads
-  }
+  function fmt(n) { return n > 0 ? n.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—' }
 
   function handlePrint() {
     const content = printRef.current.innerHTML
     const win = window.open('', '_blank')
     win.document.write(`<!DOCTYPE html><html><head>
-      <title>DCBA Report</title>
+      <title>DCBA Receipt Register</title>
       <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        body { font-family: Arial, sans-serif; font-size: 10px; margin: 0; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-        th { background: #1a3a5c; color: white; padding: 5px 8px; text-align: left; font-size: 9px; }
-        td { padding: 4px 8px; border-bottom: 1px solid #eee; font-size: 10px; }
-        .head-row td { background: #eef2ff; font-weight: bold; color: #1a3a5c; }
-        .subtotal-row td { background: #f0fdf4; font-weight: bold; color: #166534; }
-        .total-row td { background: #1a3a5c; color: white; font-weight: bold; }
-        .rpt-header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #1a3a5c; padding-bottom: 8px; }
-        .rpt-header h2 { margin: 0 0 4px; font-size: 14px; color: #1a3a5c; }
-        .rpt-header p { margin: 0; font-size: 10px; color: #666; }
-        .section-title { font-weight: bold; color: #1a3a5c; margin: 8px 0 4px; font-size: 11px; }
-        .amount { text-align: right; }
-        .text-green { color: #166534; }
-        .text-blue { color: #1a3a5c; }
+        @page { size: A4 landscape; margin: 8mm; }
+        body { font-family: Arial, sans-serif; font-size: 8.5px; margin: 0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        th { background: #1a3a5c; color: white; padding: 4px 5px; text-align: center; white-space: pre-line; font-size: 8px; border: 1px solid #ccc; }
+        td { padding: 3px 5px; border: 1px solid #ddd; font-size: 8.5px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .day-total { background: #dbeafe; font-weight: bold; }
+        .grand-total { background: #1a3a5c; color: white; font-weight: bold; }
+        .section-head { background: #f0f4ff; font-weight: bold; font-size: 9px; }
+        .rpt-hdr { text-align: center; margin-bottom: 8px; }
+        .rpt-hdr h2 { margin: 0; font-size: 13px; color: #1a3a5c; }
+        .rpt-hdr p { margin: 2px 0; font-size: 9px; color: #555; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
       </style>
     </head><body>${content}
     <script>window.onload=function(){window.print();setTimeout(()=>window.close(),1000)}<\/script>
@@ -183,77 +236,117 @@ export default function DayEndReport() {
     const wb = XLSX.utils.book_new()
 
     if (view === 'detail') {
+      const headers = ['Receipt No.', 'Date', 'Member/Party', 'C/B',
+        ...HEADS.map(h => h.short), 'Total', 'Description/Remarks']
       const rows = [
-        ['DWARKA COURT BAR ASSOCIATION — COLLECTION DETAIL REPORT'],
-        [`Period: ${formatDate(fromDate)} to ${formatDate(toDate)}  |  Mode: ${printMode.toUpperCase()}`],
-        [],
-        ['#','Date','Receipt No.','Party','Head','Description','Remarks','Mode','Account','Amount (₹)'],
+        ['DWARKA COURT BAR ASSOCIATION — RECEIPT REGISTER'],
+        [`Period: ${formatDate(fromDate)} to ${formatDate(toDate)} | Mode: ${printMode.toUpperCase()}`],
+        [], headers,
       ]
-      let sno = 1
-      Object.entries(headGroups).forEach(([head, items]) => {
-        rows.push([`--- ${head} ---`,'','','','','','','','',''])
-        items.forEach(e => rows.push([sno++,formatDate(e.date),e.receipt_no,e.party,e.head,e.description,e.remarks,e.mode,e.account,e.amount]))
-        rows.push(['','','','','','','','','Subtotal',items.reduce((s,e)=>s+e.amount,0)])
+
+      Object.entries(dailyGroups).forEach(([date, dayEntries]) => {
+        dayEntries.forEach(e => {
+          const m = mapToHead(e)
+          rows.push([
+            e.receipt_no, formatDate(e.date), e.party, isCash(e) ? 'C' : 'B',
+            ...HEADS.map(h => m[h.key] || ''),
+            e.amount,
+            `${e.description}${e.remarks ? ' | ' + e.remarks : ''}`
+          ])
+        })
+        const dt = headTotals(dayEntries)
+        const cash = dayEntries.filter(isCash).reduce((s,e) => s+e.amount, 0)
+        const bank = dayEntries.filter(e => !isCash(e)).reduce((s,e) => s+e.amount, 0)
+        rows.push([
+          '', formatDate(date), `Day Total — Cash: ${cash.toLocaleString('en-IN')} | Chq: ${bank.toLocaleString('en-IN')}`, '',
+          ...HEADS.map(h => dt[h.key] || ''),
+          dayEntries.reduce((s,e) => s+e.amount, 0), ''
+        ])
+        rows.push([])
       })
-      rows.push([],['' ,'','','','','','','','GRAND TOTAL',totalAmount])
-      rows.push(['','','','','','','','','Cash Total',totalCash])
-      rows.push(['','','','','','','','','Bank Total',totalBank])
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Detail')
+
+      const gt = headTotals(filteredEntries)
+      rows.push([
+        '', '', `GRAND TOTAL — Cash: ${totalCash.toLocaleString('en-IN')} | Bank: ${totalBank.toLocaleString('en-IN')}`, '',
+        ...HEADS.map(h => gt[h.key] || ''), totalAmount, ''
+      ])
+
+      const ws = XLSX.utils.aoa_to_sheet(rows)
+      ws['!cols'] = [{ wch: 18 },{ wch: 12 },{ wch: 25 },{ wch: 5 },
+        ...HEADS.map(() => ({ wch: 10 })), { wch: 12 },{ wch: 40 }]
+      XLSX.utils.book_append_sheet(wb, ws, 'Detail')
     }
 
-    if (view === 'daily' || view === 'detail') {
-      const days = dailySummary()
-      const allHeads = [...new Set(filteredEntries.map(e => e.head))]
+    if (view === 'daily') {
+      const headers = ['Date', 'C/B', ...HEADS.map(h => h.short), 'Total']
       const rows = [
         ['DWARKA COURT BAR ASSOCIATION — DAILY SUMMARY'],
         [`Period: ${formatDate(fromDate)} to ${formatDate(toDate)}`],
-        [],
-        ['Date', ...allHeads.flatMap(h => [`${h} (Cash)`, `${h} (Bank)`]), 'Day Cash', 'Day Bank', 'Day Total'],
+        [], headers,
       ]
-      Object.entries(days).sort(([a],[b]) => a.localeCompare(b)).forEach(([date, heads]) => {
-        const row = [formatDate(date)]
-        let dayCash = 0, dayBank = 0
-        allHeads.forEach(h => {
-          const c = heads[h]?.cash || 0, bk = heads[h]?.bank || 0
-          row.push(c || '', bk || '')
-          dayCash += c; dayBank += bk
-        })
-        row.push(dayCash || '', dayBank || '', dayCash + dayBank)
-        rows.push(row)
+      Object.entries(dailyGroups).sort(([a],[b]) => a.localeCompare(b)).forEach(([date, dayEntries]) => {
+        const cash = dayEntries.filter(isCash)
+        const bank = dayEntries.filter(e => !isCash(e))
+        if (cash.length > 0 || printMode === 'bank') {
+          if (printMode !== 'bank') {
+            const ct = headTotals(cash)
+            rows.push([formatDate(date), 'C', ...HEADS.map(h => ct[h.key] || ''), cash.reduce((s,e)=>s+e.amount,0)])
+          }
+        }
+        if (bank.length > 0 || printMode === 'cash') {
+          if (printMode !== 'cash') {
+            const bt = headTotals(bank)
+            rows.push([formatDate(date), 'B', ...HEADS.map(h => bt[h.key] || ''), bank.reduce((s,e)=>s+e.amount,0)])
+          }
+        }
       })
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Daily Summary')
+      const gt = headTotals(filteredEntries)
+      rows.push(['TOTAL', '', ...HEADS.map(h => gt[h.key] || ''), totalAmount])
+      const ws = XLSX.utils.aoa_to_sheet(rows)
+      XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary')
     }
 
-    if (view === 'monthly' || view === 'detail') {
-      const heads = monthlySummary()
+    if (view === 'monthly') {
+      const headers = ['Month', 'C/B', ...HEADS.map(h => h.short), 'Total']
       const rows = [
         ['DWARKA COURT BAR ASSOCIATION — MONTHLY SUMMARY'],
-        [`Month: ${MONTHS_FULL[filterMonth-1]} ${filterYear}`],
-        [],
-        ['Head', 'Cash (₹)', 'Bank (₹)', 'Total (₹)'],
+        [`Period: ${MONTHS_FULL[filterMonth-1]} ${filterYear}`],
+        [], headers,
       ]
-      Object.entries(heads).forEach(([head, data]) => {
-        rows.push([head, data.cash || '', data.bank || '', data.total])
+      Object.entries(monthlyGroups).sort(([a],[b]) => a.localeCompare(b)).forEach(([mo, moEntries]) => {
+        const [yr, mn] = mo.split('-')
+        const label = `${MONTHS_FULL[parseInt(mn)-1].slice(0,3)}-${yr.slice(2)}`
+        const cash = moEntries.filter(isCash)
+        const bank = moEntries.filter(e => !isCash(e))
+        if (printMode !== 'bank' && cash.length > 0) {
+          const ct = headTotals(cash)
+          rows.push([label, 'C', ...HEADS.map(h => ct[h.key] || ''), cash.reduce((s,e)=>s+e.amount,0)])
+        }
+        if (printMode !== 'cash' && bank.length > 0) {
+          const bt = headTotals(bank)
+          rows.push([label, 'B', ...HEADS.map(h => bt[h.key] || ''), bank.reduce((s,e)=>s+e.amount,0)])
+        }
       })
-      rows.push(['GRAND TOTAL', totalCash, totalBank, totalAmount])
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Monthly Summary')
+      const gt = headTotals(filteredEntries)
+      rows.push(['TOTAL', '', ...HEADS.map(h => gt[h.key] || ''), totalAmount])
+      const ws = XLSX.utils.aoa_to_sheet(rows)
+      XLSX.utils.book_append_sheet(wb, ws, 'Monthly Summary')
     }
 
-    XLSX.writeFile(wb, `DCBA_Report_${new Date().toISOString().split('T')[0]}.xlsx`)
+    XLSX.writeFile(wb, `DCBA_Register_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
 
-  const days = dailySummary()
-  const monthHeads = monthlySummary()
-  const allHeads = [...new Set(filteredEntries.map(e => e.head))]
-  const periodLabel = fromDate === toDate ? formatDate(fromDate) : `${formatDate(fromDate)} to ${formatDate(toDate)}`
+  const periodLabel = fromDate === toDate
+    ? formatDate(fromDate)
+    : `${formatDate(fromDate)} to ${formatDate(toDate)}`
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-full mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-blue-700" /> Collection Reports
+            <FileText className="w-6 h-6 text-blue-700" /> Receipt Register
           </h1>
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
         </div>
@@ -270,30 +363,24 @@ export default function DayEndReport() {
       {/* View Tabs */}
       <div className="flex gap-2 mb-4">
         {[
-          { id: 'detail', label: 'Detail Report', icon: List },
+          { id: 'detail', label: 'Detail (Date-wise)', icon: List },
           { id: 'daily', label: 'Daily Summary', icon: Calendar },
           { id: 'monthly', label: 'Monthly Summary', icon: BarChart2 },
         ].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setView(id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${view === id ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-            <Icon className="w-4 h-4" /> {label}
+            <Icon className="w-4 h-4" />{label}
           </button>
         ))}
       </div>
 
       {/* Filters */}
-      <div className="card mb-6 p-4">
-        <div className="flex flex-wrap gap-4 items-end">
+      <div className="card mb-4 p-4">
+        <div className="flex flex-wrap gap-3 items-end">
           {view !== 'monthly' ? (
             <>
-              <div>
-                <label className="label">From Date</label>
-                <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">To Date</label>
-                <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} />
-              </div>
+              <div><label className="label">From</label><input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} /></div>
+              <div><label className="label">To</label><input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} /></div>
             </>
           ) : (
             <>
@@ -311,62 +398,48 @@ export default function DayEndReport() {
               </div>
             </>
           )}
-
           {isSupervisor && (
             <div>
               <label className="label">Cashier</label>
               <select className="input" value={cashierFilter} onChange={e => setCashierFilter(e.target.value)}>
-                <option value="all">All Cashiers</option>
-                <option value="mine">My Collections</option>
+                <option value="all">All</option>
+                <option value="mine">Mine</option>
                 {cashiers.map(c => <option key={c.user_id} value={c.user_id}>{c.name}</option>)}
               </select>
             </div>
           )}
-
           <div>
-            <label className="label">Print Mode</label>
+            <label className="label">Mode</label>
             <div className="flex gap-1">
               {[{id:'both',label:'Both'},{id:'cash',label:'Cash'},{id:'bank',label:'Bank'}].map(m => (
                 <button key={m.id} onClick={() => setPrintMode(m.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${printMode === m.id ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-300'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${printMode === m.id ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-300'}`}>
                   {m.label}
                 </button>
               ))}
             </div>
           </div>
-
           <button onClick={fetchReport} className="btn-primary flex items-center gap-2">
             <Search className="w-4 h-4" /> Generate
           </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary */}
       {filteredEntries.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="rounded-xl border bg-green-50 border-green-200 p-4">
-            <p className="text-2xl font-bold text-green-700">₹{totalAmount.toLocaleString('en-IN')}</p>
-            <p className="text-xs font-medium text-green-600">Total Collection</p>
-          </div>
-          <div className="rounded-xl border bg-orange-50 border-orange-200 p-4">
-            <p className="text-2xl font-bold text-orange-700">₹{totalCash.toLocaleString('en-IN')}</p>
-            <p className="text-xs font-medium text-orange-600">Cash Total</p>
-          </div>
-          <div className="rounded-xl border bg-blue-50 border-blue-200 p-4">
-            <p className="text-2xl font-bold text-blue-700">₹{totalBank.toLocaleString('en-IN')}</p>
-            <p className="text-xs font-medium text-blue-600">Bank Total</p>
-          </div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-xl border bg-green-50 p-3"><p className="text-xl font-bold text-green-700">₹{totalAmount.toLocaleString('en-IN')}</p><p className="text-xs text-green-600">Total</p></div>
+          <div className="rounded-xl border bg-orange-50 p-3"><p className="text-xl font-bold text-orange-700">₹{totalCash.toLocaleString('en-IN')}</p><p className="text-xs text-orange-600">Cash</p></div>
+          <div className="rounded-xl border bg-blue-50 p-3"><p className="text-xl font-bold text-blue-700">₹{totalBank.toLocaleString('en-IN')}</p><p className="text-xs text-blue-600">Bank/Cheque</p></div>
         </div>
       )}
 
-      {/* Report Content */}
+      {/* Report */}
       <div ref={printRef}>
-        {/* Print Header */}
-        <div className="rpt-header mb-4">
+        <div className="rpt-hdr text-center mb-3">
           <h2 className="text-lg font-bold text-blue-900">DWARKA COURT BAR ASSOCIATION</h2>
           <p className="text-sm text-gray-500">
-            {view === 'detail' ? 'Detail Collection Report' : view === 'daily' ? 'Daily Summary' : 'Monthly Summary'}
-            {' '}— {view === 'monthly' ? `${MONTHS_FULL[filterMonth-1]} ${filterYear}` : periodLabel}
+            Receipt Register {view === 'monthly' ? `Month Wise — ${MONTHS_FULL[filterMonth-1]} ${filterYear}` : view === 'daily' ? `Daily Summary — ${periodLabel}` : `Date Wise — ${periodLabel}`}
             {' '}| Mode: {printMode.toUpperCase()}
           </p>
         </div>
@@ -376,156 +449,136 @@ export default function DayEndReport() {
         ) : filteredEntries.length === 0 ? (
           <div className="card p-8 text-center text-gray-400">No entries found</div>
         ) : (
-          <>
-            {/* DETAIL VIEW */}
-            {view === 'detail' && (
-              <div className="card p-0 overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      {['#','Date','Receipt No.','Party','Head','Description','Remarks','Mode','Account','Amount (₹)'].map(h => (
-                        <th key={h} className="table-header text-left whitespace-nowrap text-xs">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(headGroups).map(([head, items]) => (
+          <div className="card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr>
+                    {view === 'detail' && <>
+                      <th className="table-header text-center whitespace-nowrap">Receipt No.</th>
+                      <th className="table-header text-center whitespace-nowrap">Date</th>
+                      <th className="table-header text-left">Member / Party</th>
+                      <th className="table-header text-center">C/B</th>
+                    </>}
+                    {(view === 'daily' || view === 'monthly') && <>
+                      <th className="table-header text-center whitespace-nowrap">{view === 'monthly' ? 'Month' : 'Date'}</th>
+                      <th className="table-header text-center">C/B</th>
+                    </>}
+                    {HEADS.map(h => <th key={h.key} className="table-header text-right whitespace-pre-line">{h.label}</th>)}
+                    <th className="table-header text-right whitespace-nowrap">Total</th>
+                    {view === 'detail' && <th className="table-header text-left">Description / Remarks</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {view === 'detail' && Object.entries(dailyGroups).map(([date, dayEntries]) => {
+                    const cashEntries = dayEntries.filter(isCash)
+                    const bankEntries = dayEntries.filter(e => !isCash(e))
+                    const dayCash = cashEntries.reduce((s,e) => s+e.amount, 0)
+                    const dayBank = bankEntries.reduce((s,e) => s+e.amount, 0)
+                    return (
                       <>
-                        <tr key={`h-${head}`} className="head-row bg-blue-50">
-                          <td colSpan={10} className="px-4 py-2 text-sm font-semibold text-blue-800">📂 {head}</td>
-                        </tr>
-                        {items.map((e, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50">
-                            <td className="table-cell text-xs text-gray-400">{filteredEntries.indexOf(e)+1}</td>
-                            <td className="table-cell text-xs whitespace-nowrap">{formatDate(e.date)}</td>
-                            <td className="table-cell text-xs font-mono">{e.receipt_no}</td>
-                            <td className="table-cell text-sm font-medium max-w-[150px] truncate">{e.party}</td>
-                            <td className="table-cell text-xs">{e.head}</td>
-                            <td className="table-cell text-xs max-w-[150px] truncate">{e.description}</td>
-                            <td className="table-cell text-xs text-gray-500">{e.remarks||'—'}</td>
-                            <td className="table-cell text-xs">{e.mode}</td>
-                            <td className="table-cell text-xs text-gray-500">{e.account}</td>
-                            <td className="table-cell text-right font-semibold text-green-700">₹{e.amount.toLocaleString('en-IN')}</td>
-                          </tr>
-                        ))}
-                        <tr key={`s-${head}`} className="subtotal-row bg-green-50">
-                          <td colSpan={7} className="px-4 py-2 text-xs text-green-700">
-                            Cash: ₹{items.filter(isCash).reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN')} &nbsp;|&nbsp;
-                            Bank: ₹{items.filter(isBank).reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN')}
+                        {dayEntries.map((e, idx) => {
+                          const m = mapToHead(e)
+                          return (
+                            <tr key={`${e.receipt_no}-${idx}`} className={idx%2===0?'bg-white':'bg-gray-50/40'}>
+                              <td className="table-cell text-center font-mono text-gray-600">{e.receipt_no}</td>
+                              <td className="table-cell text-center whitespace-nowrap">{formatDate(e.date)}</td>
+                              <td className="table-cell max-w-[160px] truncate font-medium">{e.party}</td>
+                              <td className="table-cell text-center font-bold">{isCash(e) ? 'C' : 'B'}</td>
+                              {HEADS.map(h => <td key={h.key} className="table-cell text-right">{m[h.key] > 0 ? m[h.key].toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>)}
+                              <td className="table-cell text-right font-semibold text-green-700">{e.amount.toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                              <td className="table-cell text-gray-600 max-w-[200px] truncate">{e.description}{e.remarks ? ` | ${e.remarks}` : ''}</td>
+                            </tr>
+                          )
+                        })}
+                        <tr className="bg-blue-50 font-semibold">
+                          <td colSpan={3} className="px-3 py-2 text-xs text-blue-800">
+                            Day Total : Cash : {dayCash.toLocaleString('en-IN', {minimumFractionDigits:2})} &nbsp;|&nbsp; Chq. : {dayBank.toLocaleString('en-IN', {minimumFractionDigits:2})}
                           </td>
-                          <td colSpan={2} className="px-4 py-2 text-sm font-semibold text-green-700 text-right">{head} Total</td>
-                          <td className="px-4 py-2 text-right font-bold text-green-700">₹{items.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN')}</td>
+                          <td className="px-3 py-2 text-center text-xs text-blue-600">C+B</td>
+                          {HEADS.map(h => {
+                            const dt = headTotals(dayEntries)
+                            return <td key={h.key} className="px-3 py-2 text-right text-xs text-blue-700">{dt[h.key] > 0 ? dt[h.key].toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+                          })}
+                          <td className="px-3 py-2 text-right text-xs font-bold text-blue-800">{dayEntries.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                          <td></td>
                         </tr>
+                        <tr><td colSpan={HEADS.length + 5} className="py-1"></td></tr>
                       </>
-                    ))}
-                    <tr className="bg-blue-900 text-white font-bold">
-                      <td colSpan={7} className="px-4 py-3 text-xs">
-                        Cash: ₹{totalCash.toLocaleString('en-IN')} &nbsp;|&nbsp; Bank: ₹{totalBank.toLocaleString('en-IN')}
-                      </td>
-                      <td colSpan={2} className="px-4 py-3 text-sm text-right">GRAND TOTAL</td>
-                      <td className="px-4 py-3 text-right text-sm">₹{totalAmount.toLocaleString('en-IN')}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    )
+                  })}
 
-            {/* DAILY SUMMARY VIEW */}
-            {view === 'daily' && (
-              <div className="card p-0 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr>
-                        <th className="table-header text-left whitespace-nowrap">Date</th>
-                        {allHeads.map(h => (
-                          <>
-                            <th key={`${h}-c`} className="table-header text-right whitespace-nowrap text-xs">{h}<br/><span className="text-orange-300">Cash</span></th>
-                            <th key={`${h}-b`} className="table-header text-right whitespace-nowrap text-xs">{h}<br/><span className="text-blue-300">Bank</span></th>
-                          </>
-                        ))}
-                        <th className="table-header text-right whitespace-nowrap text-orange-300">Day Cash</th>
-                        <th className="table-header text-right whitespace-nowrap text-blue-300">Day Bank</th>
-                        <th className="table-header text-right whitespace-nowrap">Day Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(days).sort(([a],[b]) => a.localeCompare(b)).map(([date, heads], i) => {
-                        let dayCash = 0, dayBank = 0
-                        return (
-                          <tr key={date} className={i%2===0?'bg-white':'bg-gray-50/50'}>
-                            <td className="table-cell text-sm font-medium whitespace-nowrap">{formatDate(date)}</td>
-                            {allHeads.map(h => {
-                              const c = heads[h]?.cash||0, bk = heads[h]?.bank||0
-                              dayCash += c; dayBank += bk
-                              return (
-                                <>
-                                  <td key={`${h}-c`} className="table-cell text-right text-sm text-orange-700">{c > 0 ? `₹${c.toLocaleString('en-IN')}` : '—'}</td>
-                                  <td key={`${h}-b`} className="table-cell text-right text-sm text-blue-700">{bk > 0 ? `₹${bk.toLocaleString('en-IN')}` : '—'}</td>
-                                </>
-                              )
-                            })}
-                            <td className="table-cell text-right font-semibold text-orange-700">{dayCash > 0 ? `₹${dayCash.toLocaleString('en-IN')}` : '—'}</td>
-                            <td className="table-cell text-right font-semibold text-blue-700">{dayBank > 0 ? `₹${dayBank.toLocaleString('en-IN')}` : '—'}</td>
-                            <td className="table-cell text-right font-bold">₹{(dayCash+dayBank).toLocaleString('en-IN')}</td>
+                  {view === 'daily' && Object.entries(dailyGroups).sort(([a],[b])=>a.localeCompare(b)).map(([date, dayEntries], i) => {
+                    const cash = dayEntries.filter(isCash)
+                    const bank = dayEntries.filter(e => !isCash(e))
+                    return (
+                      <>
+                        {printMode !== 'bank' && cash.length > 0 && (
+                          <tr key={`${date}-c`} className={i%2===0?'bg-white':'bg-gray-50/40'}>
+                            <td className="table-cell text-center whitespace-nowrap">{formatDate(date)}</td>
+                            <td className="table-cell text-center font-bold text-orange-600">C</td>
+                            {HEADS.map(h => { const ct=headTotals(cash); return <td key={h.key} className="table-cell text-right">{ct[h.key]>0?fmt(ct[h.key]):'—'}</td> })}
+                            <td className="table-cell text-right font-semibold text-orange-700">{cash.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
                           </tr>
-                        )
-                      })}
-                      <tr className="bg-blue-900 text-white font-bold">
-                        <td className="px-4 py-3 text-sm">TOTAL</td>
-                        {allHeads.map(h => (
-                          <>
-                            <td key={`tot-${h}-c`} className="px-4 py-3 text-right text-sm">₹{(filteredEntries.filter(e=>e.head===h&&isCash(e)).reduce((s,e)=>s+e.amount,0)).toLocaleString('en-IN')}</td>
-                            <td key={`tot-${h}-b`} className="px-4 py-3 text-right text-sm">₹{(filteredEntries.filter(e=>e.head===h&&isBank(e)).reduce((s,e)=>s+e.amount,0)).toLocaleString('en-IN')}</td>
-                          </>
-                        ))}
-                        <td className="px-4 py-3 text-right text-sm">₹{totalCash.toLocaleString('en-IN')}</td>
-                        <td className="px-4 py-3 text-right text-sm">₹{totalBank.toLocaleString('en-IN')}</td>
-                        <td className="px-4 py-3 text-right text-sm">₹{totalAmount.toLocaleString('en-IN')}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+                        )}
+                        {printMode !== 'cash' && bank.length > 0 && (
+                          <tr key={`${date}-b`} className={i%2===0?'bg-white/70':'bg-gray-50/20'}>
+                            <td className="table-cell text-center whitespace-nowrap">{printMode==='bank'?formatDate(date):''}</td>
+                            <td className="table-cell text-center font-bold text-blue-600">B</td>
+                            {HEADS.map(h => { const bt=headTotals(bank); return <td key={h.key} className="table-cell text-right">{bt[h.key]>0?fmt(bt[h.key]):'—'}</td> })}
+                            <td className="table-cell text-right font-semibold text-blue-700">{bank.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })}
 
-            {/* MONTHLY SUMMARY VIEW */}
-            {view === 'monthly' && (
-              <div className="card p-0 overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      <th className="table-header text-left">Income Head</th>
-                      <th className="table-header text-right text-orange-300">Cash (₹)</th>
-                      <th className="table-header text-right text-blue-300">Bank (₹)</th>
-                      <th className="table-header text-right">Total (₹)</th>
-                      <th className="table-header text-right">%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(monthHeads).map(([head, data], i) => (
-                      <tr key={head} className={i%2===0?'bg-white':'bg-gray-50/50'}>
-                        <td className="table-cell font-medium">{head}</td>
-                        <td className="table-cell text-right text-orange-700">₹{data.cash.toLocaleString('en-IN')}</td>
-                        <td className="table-cell text-right text-blue-700">₹{data.bank.toLocaleString('en-IN')}</td>
-                        <td className="table-cell text-right font-semibold text-green-700">₹{data.total.toLocaleString('en-IN')}</td>
-                        <td className="table-cell text-right text-gray-500 text-xs">
-                          {totalAmount > 0 ? ((data.total/totalAmount)*100).toFixed(1) : '0'}%
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-blue-900 text-white font-bold">
-                      <td className="px-4 py-3">GRAND TOTAL — {MONTHS_FULL[filterMonth-1]} {filterYear}</td>
-                      <td className="px-4 py-3 text-right">₹{totalCash.toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-3 text-right">₹{totalBank.toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-3 text-right">₹{totalAmount.toLocaleString('en-IN')}</td>
-                      <td className="px-4 py-3 text-right">100%</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+                  {view === 'monthly' && Object.entries(monthlyGroups).sort(([a],[b])=>a.localeCompare(b)).map(([mo, moEntries], i) => {
+                    const [yr, mn] = mo.split('-')
+                    const label = `${MONTHS_FULL[parseInt(mn)-1].slice(0,3)}-${yr.slice(2)}`
+                    const cash = moEntries.filter(isCash)
+                    const bank = moEntries.filter(e => !isCash(e))
+                    return (
+                      <>
+                        {printMode !== 'bank' && cash.length > 0 && (
+                          <tr key={`${mo}-c`} className={i%2===0?'bg-white':'bg-gray-50/40'}>
+                            <td className="table-cell font-medium whitespace-nowrap">{label}</td>
+                            <td className="table-cell text-center font-bold text-orange-600">C</td>
+                            {HEADS.map(h => { const ct=headTotals(cash); return <td key={h.key} className="table-cell text-right">{ct[h.key]>0?fmt(ct[h.key]):'—'}</td> })}
+                            <td className="table-cell text-right font-semibold text-orange-700">{cash.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                          </tr>
+                        )}
+                        {printMode !== 'cash' && bank.length > 0 && (
+                          <tr key={`${mo}-b`} className={i%2===0?'bg-white/70':'bg-gray-50/20'}>
+                            <td className="table-cell font-medium whitespace-nowrap">{printMode==='bank'?label:''}</td>
+                            <td className="table-cell text-center font-bold text-blue-600">B</td>
+                            {HEADS.map(h => { const bt=headTotals(bank); return <td key={h.key} className="table-cell text-right">{bt[h.key]>0?fmt(bt[h.key]):'—'}</td> })}
+                            <td className="table-cell text-right font-semibold text-blue-700">{bank.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })}
+
+                  {/* Grand Total */}
+                  <tr className="bg-blue-900 text-white font-bold">
+                    <td colSpan={view==='detail'?3:1} className="px-3 py-3 text-sm">
+                      {view==='monthly' ? `TOTAL — ${MONTHS_FULL[filterMonth-1]} ${filterYear}` : `GRAND TOTAL — ${periodLabel}`}
+                    </td>
+                    <td className="px-3 py-3 text-center text-xs">
+                      C:{totalCash.toLocaleString('en-IN',{minimumFractionDigits:2})}<br/>B:{totalBank.toLocaleString('en-IN',{minimumFractionDigits:2})}
+                    </td>
+                    {HEADS.map(h => {
+                      const gt = headTotals(filteredEntries)
+                      return <td key={h.key} className="px-3 py-3 text-right text-xs">{gt[h.key]>0?fmt(gt[h.key]):'—'}</td>
+                    })}
+                    <td className="px-3 py-3 text-right text-sm">₹{totalAmount.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+                    {view==='detail' && <td></td>}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
     </div>

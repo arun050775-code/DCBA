@@ -582,16 +582,19 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
       // Build description
       const items = []
       if (collectMode === 'outstanding') {
-        // New member — admission not yet paid, outstanding = admission + sub + icard
+        // New member — admission not yet paid
         if (member.admission_fee_paid !== true && baseOutstanding > 0) {
-          // Breakdown the outstanding into components
-          const hasIcard = member.icard_issued !== true
-          const admiAmt = ADMISSION_FEE
-          const icardAmt = hasIcard ? ICARD_FEE : 0
-          const subAmt = baseOutstanding - admiAmt - icardAmt
-          if (admiAmt > 0) items.push(`Admission Fee ₹${admiAmt}`)
-          if (subAmt > 0) items.push(`Annual Subscription ₹${subAmt}`)
-          if (icardAmt > 0) items.push(`I-Card Fee ₹${icardAmt}`)
+          items.push(`Admission Fee ₹${ADMISSION_FEE}`)
+          const remainingAfterAdmi = baseOutstanding - ADMISSION_FEE
+          // Check if I-Card included (₹50)
+          if (remainingAfterAdmi === ANNUAL_FEE + ICARD_FEE) {
+            items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
+            items.push(`I-Card Fee ₹${ICARD_FEE}`)
+          } else if (remainingAfterAdmi === ANNUAL_FEE) {
+            items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
+          } else if (remainingAfterAdmi > 0) {
+            items.push(`Annual Subscription ₹${remainingAfterAdmi}`)
+          }
         } else if (baseOutstanding > 0) {
           // Existing member — accrued subscription dues
           items.push(`Accrued Dues ₹${baseOutstanding}`)

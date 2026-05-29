@@ -124,6 +124,7 @@ export default function BankEntryModal({ type, org, userRole, bankAccounts: prop
         cashier_name: userRole?.name,
         cheque_no: form.cheque_no,
         bank_name: bankAccounts.find(b => b.id === form.bank_account_id)?.account_name,
+        bank_account_no: bankAccounts.find(b => b.id === form.bank_account_id)?.account_number,
         remarks: form.remarks,
         org_name: org.name,
       }

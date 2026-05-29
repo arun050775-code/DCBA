@@ -52,7 +52,7 @@ function VoucherBody({ voucher, copy }) {
         <span><strong>Mode:</strong> {voucher.payment_mode?.toUpperCase()}</span>
         {voucher.cheque_no && <span><strong>Chq No:</strong> {voucher.cheque_no}</span>}
         {voucher.cheque_date && <span><strong>Chq Date:</strong> {formatDate(voucher.cheque_date)}</span>}
-        {voucher.bank_name && <span><strong>Bank:</strong> {voucher.bank_name}</span>}
+        {voucher.bank_name && <span><strong>Bank:</strong> {voucher.bank_name}{voucher.bank_account_no ? ` (${voucher.bank_account_no})` : ''}</span>}
         {voucher.transaction_id && <span><strong>Txn ID:</strong> {voucher.transaction_id}</span>}
       </div>
 

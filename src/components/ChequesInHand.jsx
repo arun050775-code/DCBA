@@ -134,14 +134,12 @@ export default function ChequesInHand() {
     setLoading(false)
   }
 
-  async function confirmDeposit(cheque, bankId, depositDate) {
+async function confirmDeposit(cheque, bankId, depositDate) {
     const table = cheque.source === 'rent' ? 'rent_collections' : 'income_entries'
-    const { error } = await supabase.from(table).update({
-      cheque_status: 'deposited',
-      bank_account_id: bankId,
-      collection_date: cheque.source === 'rent' ? depositDate : undefined,
-      entry_date: cheque.source === 'income' ? depositDate : undefined,
-    }).eq('id', cheque.id)
+    const updates = { cheque_status: 'deposited', bank_account_id: bankId }
+    if (cheque.source === 'rent') updates.collection_date = depositDate
+    else updates.entry_date = depositDate
+    const { error } = await supabase.from(table).update(updates).eq('id', cheque.id)
     if (error) toast.error(error.message)
     else toast.success('Cheque marked as deposited!')
     setDepositModal(null)
@@ -149,10 +147,56 @@ export default function ChequesInHand() {
   }
 
   async function markBounced(cheque) {
+    if (cheque.status !== 'deposited') { toast.error('Only deposited cheques can be bounced'); return }
     const table = cheque.source === 'rent' ? 'rent_collections' : 'income_entries'
     const { error } = await supabase.from(table).update({ cheque_status: 'bounced' }).eq('id', cheque.id)
-    if (error) toast.error(error.message)
-    else toast.success('Cheque marked as bounced')
+    if (error) { toast.error(error.message); return }
+
+    if (cheque.source === 'income') {
+      const { data: orig } = await supabase.from('income_entries')
+        .select('member_id, items_collected, receipt_no, org_id, cash_account_id, bank_account_id')
+        .eq('id', cheque.id).single()
+      await supabase.from('income_entries').insert({
+        org_id: orig.org_id,
+        entry_date: new Date().toISOString().split('T')[0],
+        description: `CHEQUE BOUNCE REVERSAL — Ref: ${orig.receipt_no}`,
+        amount: -Number(cheque.amount),
+        payment_mode: 'cheque',
+        cash_account_id: orig.cash_account_id,
+        bank_account_id: orig.bank_account_id,
+        cheque_status: 'bounced',
+        member_id: orig.member_id,
+      })
+      if (orig.member_id) {
+        const { data: member } = await supabase.from('dcba_members').select('*').eq('id', orig.member_id).single()
+        if (member) {
+          const upd = { outstanding_fees: (Number(member.outstanding_fees) || 0) + Number(cheque.amount) }
+          const items = orig.items_collected || ''
+          if (items.includes('Admission Fee')) { upd.admission_fee_paid = false; upd.status = 'pending' }
+          if (items.includes('Annual Subscription')) {
+            if (member.membership_date) {
+              const d = new Date(member.membership_date); d.setFullYear(d.getFullYear() - 1)
+              upd.membership_date = d.toISOString().split('T')[0]
+            }
+            upd.annual_fee_paid = false
+          }
+          await supabase.from('dcba_members').update(upd).eq('id', orig.member_id)
+        }
+      }
+    } else {
+      const { data: orig } = await supabase.from('rent_collections').select('*').eq('id', cheque.id).single()
+      await supabase.from('income_entries').insert({
+        org_id: orig.org_id,
+        entry_date: new Date().toISOString().split('T')[0],
+        description: `CHEQUE BOUNCE REVERSAL (RENT) — Ref: ${orig.receipt_no}`,
+        amount: -Number(cheque.amount),
+        payment_mode: 'cheque',
+        bank_account_id: orig.bank_account_id,
+        cash_account_id: orig.cash_account_id,
+        cheque_status: 'bounced',
+      })
+    }
+    toast.success('Cheque bounced — reversal entry created!')
     fetchCheques()
   }
 
@@ -241,9 +285,11 @@ export default function ChequesInHand() {
                       <div className="flex gap-1">
                         <button onClick={() => setDepositModal(c)}
                           className="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 rounded font-medium">✓ Deposited</button>
-                        <button onClick={() => markBounced(c)}
-                          className="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded font-medium">✗ Bounced</button>
                       </div>
+                    )}
+                    {isAdmin && c.status === 'deposited' && (
+                      <button onClick={() => markBounced(c)}
+                        className="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded font-medium">✗ Bounced</button>
                     )}
                     {c.status !== 'pending' && <span className="text-xs text-gray-400">—</span>}
                   </td>

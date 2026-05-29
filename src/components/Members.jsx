@@ -598,6 +598,8 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
         cash_account_id: cashId,
         bank_account_id: bankId,
         receipt_no: receiptNo,
+        member_id: member.id,
+        items_collected: items.join(', '),
         cheque_no: form.payment_mode === 'cheque' ? form.cheque_no : null,
         cheque_date: form.payment_mode === 'cheque' ? form.cheque_date : null,
         transaction_id: ['upi','neft'].includes(form.payment_mode) ? form.transaction_id : null,

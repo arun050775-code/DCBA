@@ -582,12 +582,28 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
       // Build description
       const items = []
       if (collectMode === 'outstanding') {
-        if (baseOutstanding > 0) items.push(`Accrued Dues ₹${baseOutstanding}`)
+        // New member — admission not yet paid, outstanding = admission + sub + icard
+        if (member.admission_fee_paid !== true && baseOutstanding > 0) {
+          // Breakdown the outstanding into components
+          const hasIcard = member.icard_issued !== true
+          const admiAmt = ADMISSION_FEE
+          const icardAmt = hasIcard ? ICARD_FEE : 0
+          const subAmt = baseOutstanding - admiAmt - icardAmt
+          if (admiAmt > 0) items.push(`Admission Fee ₹${admiAmt}`)
+          if (subAmt > 0) items.push(`Annual Subscription ₹${subAmt}`)
+          if (icardAmt > 0) items.push(`I-Card Fee ₹${icardAmt}`)
+        } else if (baseOutstanding > 0) {
+          // Existing member — accrued subscription dues
+          items.push(`Accrued Dues ₹${baseOutstanding}`)
+        }
         if (form.pay_annual) items.push(`Annual Subscription ₹${ANNUAL_FEE}`)
         if (form.pay_icard) items.push(`I-Card Fee ₹${ICARD_FEE}`)
       } else {
         items.push(`Advance Payment ₹${totalToPay}`)
       }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const userId = session?.user?.id
 
       const { error: incErr } = await supabase.from('income_entries').insert({
         org_id: org.id,
@@ -600,6 +616,7 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
         receipt_no: receiptNo,
         member_id: member.id,
         items_collected: items.join(', '),
+        created_by: userId,
         cheque_no: form.payment_mode === 'cheque' ? form.cheque_no : null,
         cheque_date: form.payment_mode === 'cheque' ? form.cheque_date : null,
         transaction_id: ['upi','neft'].includes(form.payment_mode) ? form.transaction_id : null,

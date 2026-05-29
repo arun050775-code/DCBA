@@ -5,28 +5,28 @@ import toast from 'react-hot-toast'
 import { Search, FileText, Printer, X, Mail, User } from 'lucide-react'
 
 const OFFICE_BEARERS = [
-  { name: 'ANIL KR. BASOYA', designation: 'HONY. SECRETARY' },
-  { name: 'RAJPAL KASANA', designation: 'PRESIDENT' },
-  { name: 'NARENDRA SHARMA', designation: 'VICE-PRESIDENT' },
-  { name: 'HITESH BAISLA', designation: 'ADDL. SECRETARY' },
-  { name: 'NIRDESH BIDHURI', designation: 'JOINT SECRETARY' },
-  { name: 'POOJA ARORA', designation: 'TREASURER' },
+  { name: 'AVNISH RANA', designation: 'PRESIDENT' },
+  { name: 'VIVEK DAGAR', designation: 'VICE PRESIDENT' },
+  { name: 'KARAN VEER TYAGI', designation: 'HONY. SECRETARY' },
+  { name: 'HEMANT VERMA', designation: 'ADDL. SECRETARY' },
+  { name: 'AJAY SAINI', designation: 'JOINT SECRETARY' },
+  { name: 'MAMTA YADAV', designation: 'TREASURER' },
 ]
 
 const LEFT_PANEL_BEARERS = [
-  { name: 'RAJPAL KASANA', designation: 'PRESIDENT', phone: '9810307671' },
-  { name: 'NARENDRA SHARMA', designation: 'VICE-PRESIDENT', phone: '9212545556' },
-  { name: 'ANIL KR. BASOYA', designation: 'HONY. SECRETARY', phone: '9899701777' },
-  { name: 'HITESH BAISLA', designation: 'ADDL. SECRETARY', phone: '9899734554' },
-  { name: 'NIRDESH BIDHURI', designation: 'JOINT SECRETARY', phone: '9999880051' },
-  { name: 'POOJA ARORA', designation: 'TREASURER', phone: '9716303446' },
-  { name: 'VIKRAM SINGH BIDHURI', designation: 'MEMBER LIBRARY', phone: '9810190007' },
-  { name: 'BHARAT AHUJA', designation: 'SR. MEMBER EXECUTIVE\n(ABOVE 20 YEARS)', phone: '9810987109' },
-  { name: 'AJAY KUMAR TANWAR', designation: 'SR. MEMBER EXECUTIVE\n(10-20 YEARS)', phone: '9871229143' },
-  { name: 'YAMINI SHARMA', designation: 'SR. MEMBER EXECUTIVE\n(WOMEN-ABOVE 10 YEARS)', phone: '9312898472' },
-  { name: 'GARIMA SINGH', designation: 'LADY MEMBER EXECUTIVE\n(BELOW 10 YEARS)', phone: '7042829677' },
-  { name: 'NIKHIL RANA', designation: 'MEMBER EXECUTIVE\n(5-10 YEARS)', phone: '9870570037' },
-  { name: 'PUNEET BASIST', designation: 'MEMBER EXECUTIVE\n(0-5 YEARS)', phone: '9999558950' },
+  { name: 'AVNISH RANA', designation: 'PRESIDENT', phone: '' },
+  { name: 'VIVEK DAGAR', designation: 'VICE PRESIDENT', phone: '' },
+  { name: 'KARAN VEER TYAGI', designation: 'HONY. SECRETARY', phone: '' },
+  { name: 'HEMANT VERMA', designation: 'ADDL. SECRETARY', phone: '' },
+  { name: 'AJAY SAINI', designation: 'JOINT SECRETARY', phone: '' },
+  { name: 'MAMTA YADAV', designation: 'TREASURER', phone: '' },
+  { name: 'AMIT KR. SINGH', designation: 'LIBRARY INCHARGE', phone: '' },
+  { name: 'ASHOK KR. JHA', designation: 'EXE. MEMBER', phone: '' },
+  { name: 'NISHA SETHI SUDAN', designation: 'WOMEN EXE. MEMBER', phone: '' },
+  { name: 'RITU GUPTA', designation: 'LADY EXE. MEMBER', phone: '' },
+  { name: 'LATA NAUTIYAL', designation: 'EXE. MEMBER', phone: '' },
+  { name: 'RAHUL TYAGI', designation: 'EXE. MEMBER', phone: '' },
+  { name: 'YAMANDEEP SOLANKI', designation: 'EXE. MEMBER', phone: '' },
 ]
 
 
@@ -82,9 +82,9 @@ export default function ExperienceLetter() {
     setSearching(true)
     try {
       const { data } = await supabase
-        .from('sba_members')
+        .from('dcba_members')
         .select('*')
-        .or(`member_name.ilike.%${query}%,membership_no.ilike.%${query}%,enrollment_no.ilike.%${query}%`)
+        .or(`member_name.ilike.%${query}%,member_no.ilike.%${query}%,enrollment_no.ilike.%${query}%`)
         .limit(10)
       setSearchResults(data || [])
     } catch (err) {
@@ -165,13 +165,13 @@ export default function ExperienceLetter() {
           This is to certify that <strong>${tokens.salutation} ${selectedMember?.member_name || ''}</strong>,
           Advocate as per record, is enrolled with the Bar Council of Delhi
           vide Enrollment No. <strong>${selectedMember?.enrollment_no || ''}</strong> and is a
-          Member of the Saket Bar Association vide Membership No.
-          <strong>${selectedMember?.membership_no || ''} dated ${formatMembershipDate(selectedMember?.membership_date)}.</strong>
+          Member of the Dwarka Court Bar Association vide Membership No.
+          <strong>${selectedMember?.member_no || ''} dated ${formatMembershipDate(selectedMember?.membership_date)}.</strong>
         </div>
 
         <!-- Para 2 -->
         <div style="text-align:justify; margin-bottom:14pt; text-indent:36pt; line-height:2;">
-          ${tokens.heshe} has been continuously practicing as an Advocate at District Courts, Saket, New Delhi.
+          ${tokens.heshe} has been continuously practicing as an Advocate at District Courts, Dwarka, New Delhi.
         </div>
 
         <!-- Para 3 -->
@@ -218,7 +218,7 @@ export default function ExperienceLetter() {
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <FileText className="w-6 h-6 text-blue-700" /> Experience Letter Generator
         </h1>
-        <p className="text-gray-500 text-sm mt-1">{currentOrg?.name} — 16,304 members</p>
+        <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -244,7 +244,7 @@ export default function ExperienceLetter() {
                   <button key={m.id} onClick={() => selectMember(m)}
                     className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b border-gray-50 last:border-0">
                     <div className="font-medium text-gray-800 text-sm">{m.member_name}</div>
-                    <div className="text-xs text-gray-500">{m.membership_no} · {m.enrollment_no}</div>
+                    <div className="text-xs text-gray-500">{m.member_no} · {m.enrollment_no}</div>
                   </button>
                 ))}
               </div>
@@ -260,7 +260,7 @@ export default function ExperienceLetter() {
                   <p className="font-bold text-blue-800">{selectedMember.member_name}</p>
                   <p className="text-blue-600">S/D/W of: {selectedMember.father_name}</p>
                   <p className="text-blue-600">Enrollment: {selectedMember.enrollment_no}</p>
-                  <p className="text-blue-600">Membership: {selectedMember.membership_no} dated {formatMembershipDate(selectedMember.membership_date)}</p>
+                  <p className="text-blue-600">Membership: {selectedMember.member_no} dated {formatMembershipDate(selectedMember.membership_date)}</p>
                   {selectedMember.mobile && <p className="text-blue-600">Mobile: {selectedMember.mobile}</p>}
                 </div>
               </div>
@@ -393,9 +393,9 @@ function LetterPreview({ member, letterNo, letterDate, signatory, tokens }) {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <div style={s.h1}>SAKET BAR ASSOCIATION (REGD.)</div>
-        <div style={s.h2}>SAKET COURT COMPLEX, NEW DELHI-110017</div>
-        <div style={s.h2}>Phone : 011-47586747 &nbsp;|&nbsp; E-mail : saketbarassociation@gmail.com</div>
+        <div style={s.h1}>DWARKA COURT BAR ASSOCIATION (REGD.)</div>
+        <div style={s.h2}>DWARKA COURT COMPLEX, SECTOR-10, NEW DELHI - 110075</div>
+        <div style={s.h2}>Phone : 011-28041409 &nbsp;|&nbsp; E-mail : dwarkacourtbarassociation@gmail.com</div>
       </div>
 
       <div style={s.refDate}>
@@ -426,16 +426,16 @@ function LetterPreview({ member, letterNo, letterDate, signatory, tokens }) {
             Advocate as per record, is enrolled with the Bar Council of Delhi
             vide Enrollment No.{' '}
             <span style={s.bold}>{member?.enrollment_no || 'D/XXXX/XXXX'}</span>{' '}
-            and is a Member of the Saket Bar Association vide
+            and is a Member of the Dwarka Court Bar Association vide
             Membership No.{' '}
             <span style={s.bold}>
-              {member?.membership_no || 'M-XXXX'} dated {member ? formatMembershipDate(member.membership_date) : 'DD.MM.YYYY'}.
+              {member?.member_no || 'M-XXXX'} dated {member ? formatMembershipDate(member.membership_date) : 'DD.MM.YYYY'}.
             </span>
           </div>
 
           <div style={s.para}>
             {tokens.heshe} has been continuously practicing as an
-            Advocate at District Courts, Saket, New Delhi.
+            Advocate at District Courts, Dwarka, New Delhi.
           </div>
 
           <div style={s.para}>

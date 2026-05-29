@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { FileText, Printer, Download, Search, List, BarChart2, Calendar } from 'lucide-react'
+import { FileText, Printer, Download, Search, List, BarChart2, Calendar, X } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -136,6 +136,7 @@ export default function DayEndReport() {
   const [cashiers, setCashiers] = useState([])
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(false)
+  const [reprintEntry, setReprintEntry] = useState(null)
   const printRef = useRef()
 
   useEffect(() => { if (currentOrg) { fetchCashiers() } }, [currentOrg])
@@ -521,6 +522,7 @@ export default function DayEndReport() {
                     {HEADS.map(h => <th key={h.key} className="table-header text-right whitespace-pre-line">{h.label}</th>)}
                     <th className="table-header text-right whitespace-nowrap">Total</th>
                     {view === 'detail' && <th className="table-header text-left">Description / Remarks</th>}
+                    {view === 'detail' && <th className="table-header text-center">🖨</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -542,6 +544,12 @@ export default function DayEndReport() {
                               {HEADS.map(h => <td key={h.key} className="table-cell text-right">{m[h.key] > 0 ? m[h.key].toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>)}
                               <td className="table-cell text-right font-semibold text-green-700">{e.amount.toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
                               <td className="table-cell text-gray-600 max-w-[200px] truncate">{e.description}{e.remarks ? ` | ${e.remarks}` : ''}</td>
+                              <td className="table-cell text-center">
+                                <button onClick={() => setReprintEntry(e)}
+                                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded">
+                                  🖨
+                                </button>
+                              </td>
                             </tr>
                           )
                         })}
@@ -634,6 +642,93 @@ export default function DayEndReport() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Reprint Modal */}
+      {reprintEntry && (
+        <ReprintModal entry={reprintEntry} onClose={() => setReprintEntry(null)} />
+      )}
+    </div>
+  )
+}
+
+function ReprintModal({ entry, onClose }) {
+  function formatDate(d) {
+    if (!d) return ''
+    const dt = new Date(d)
+    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    return `${String(dt.getDate()).padStart(2,'0')}-${m[dt.getMonth()]}-${dt.getFullYear()}`
+  }
+
+  function ReceiptBody({ copy }) {
+    return (
+      <div style={{ paddingTop:'36mm', paddingLeft:'18mm', paddingRight:'14mm', fontFamily:'Arial,sans-serif', fontSize:'11px', height:'148.5mm', boxSizing:'border-box', position:'relative' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'3px' }}>
+          <span style={{ fontSize:'8px', color:'#666', fontStyle:'italic' }}>{copy}</span>
+          <span style={{ fontSize:'10px', color:'red', fontWeight:'bold', border:'1px solid red', padding:'1px 5px' }}>REPRINT</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px', borderBottom:'1px solid #ccc', paddingBottom:'4px' }}>
+          <span><strong>Receipt No:</strong> {entry.receipt_no}</span>
+          <span><strong>Date:</strong> {formatDate(entry.date)}</span>
+        </div>
+        <div style={{ marginBottom:'5px' }}><strong>Party: </strong>{entry.party}</div>
+        <div style={{ display:'flex', alignItems:'baseline', gap:'8px', marginBottom:'5px' }}>
+          <strong>Amount:</strong>
+          <span style={{ fontSize:'15px', fontWeight:'bold' }}>₹{Number(entry.amount).toLocaleString('en-IN')}</span>
+        </div>
+        <div style={{ marginBottom:'4px' }}><strong>Description: </strong>{entry.description}</div>
+        {entry.remarks && <div style={{ fontSize:'9px', color:'#555', marginBottom:'4px' }}><strong>Remarks:</strong> {entry.remarks}</div>}
+        <div style={{ display:'flex', gap:'14px' }}>
+          <span><strong>Mode:</strong> {entry.mode}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', position:'absolute', bottom:'8mm', left:'18mm', right:'14mm' }}>
+          <div style={{ textAlign:'center', borderTop:'1px solid #999', paddingTop:'2px', width:'80px', fontSize:'9px', color:'#777' }}>Receiver</div>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontSize:'9px', color:'#777', marginBottom:'10mm' }}>For Dwarka Court Bar Association</div>
+            <div style={{ borderTop:'1px solid #000', paddingTop:'2px', fontSize:'10px', minWidth:'110px', textAlign:'center' }}>Authorised Signatory</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function handlePrint() {
+    const content = document.getElementById('reprint-content').innerHTML
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html><html><head><title>Reprint</title>
+      <style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif}.half{height:148.5mm;overflow:hidden}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+    </head><body>${content}<script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script></body></html>`)
+    win.document.close()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h3 className="text-lg font-semibold flex items-center gap-2"><Printer className="w-5 h-5 text-blue-600" /> Reprint Receipt</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 bg-gray-100 overflow-y-auto max-h-[70vh]">
+          <div id="reprint-content" style={{ background:'#fffff0', border:'1px solid #d4d010', borderRadius:'4px', overflow:'hidden' }}>
+            <div className="half" style={{ height:'148.5mm', position:'relative' }}>
+              <div style={{ height:'36mm', background:'rgba(212,208,16,0.15)', borderBottom:'1px dashed #ccc', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontSize:'9px', color:'#999' }}>↑ DCBA Pre-printed letterhead</span>
+              </div>
+              <ReceiptBody copy="ORIGINAL" />
+            </div>
+            <div style={{ borderTop:'1px dashed #999', textAlign:'center', fontSize:'8px', color:'#999', padding:'2px 0' }}>✂ — Cut Here — ✂</div>
+            <div className="half" style={{ height:'148.5mm', position:'relative' }}>
+              <div style={{ height:'36mm', background:'rgba(212,208,16,0.15)', borderBottom:'1px dashed #ccc', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontSize:'9px', color:'#999' }}>↑ Duplicate half</span>
+              </div>
+              <ReceiptBody copy="DUPLICATE (Office Copy)" />
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t flex gap-3 justify-between">
+          <button onClick={onClose} className="btn-secondary">Close</button>
+          <button onClick={handlePrint} className="btn-primary flex items-center gap-2"><Printer className="w-4 h-4" /> Print</button>
+        </div>
       </div>
     </div>
   )

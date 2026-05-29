@@ -851,11 +851,55 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
 // ---- MEMBER DETAIL MODAL ----
 function MemberDetailModal({ member, onClose, org }) {
   const anniv = getAnniversaryStatus(member.membership_date)
+  const [activeTab, setActiveTab] = useState('details')
+  const [feeHistory, setFeeHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [reprintReceipt, setReprintReceipt] = useState(null)
+
+  useEffect(() => {
+    if (activeTab === 'history') fetchFeeHistory()
+  }, [activeTab])
+
+  async function fetchFeeHistory() {
+    setLoadingHistory(true)
+    const { data } = await supabase.from('income_entries')
+      .select('*')
+      .eq('member_id', member.id)
+      .eq('is_cancelled', false)
+      .order('entry_date', { ascending: false })
+    setFeeHistory(data || [])
+    setLoadingHistory(false)
+  }
+
+  function handleReprint(entry) {
+    setReprintReceipt({
+      receiptNo: entry.receipt_no,
+      date: entry.entry_date,
+      member,
+      amount: Number(entry.amount),
+      amountInWords: toWords(Number(entry.amount)) + ' Only',
+      items: entry.items_collected ? entry.items_collected.split(', ') : [entry.description],
+      paymentMode: (entry.payment_mode || 'cash').toUpperCase(),
+      cheque_no: entry.cheque_no,
+      cheque_date: entry.cheque_date,
+      transaction_id: entry.transaction_id,
+      remarks: entry.remarks,
+      isReprint: true,
+    })
+  }
+
+  function formatDate(d) {
+    if (!d) return '—'
+    const dt = new Date(d)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    return `${String(dt.getDate()).padStart(2,'0')}-${months[dt.getMonth()]}-${dt.getFullYear()}`
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-yellow-500 flex-shrink-0">
               <img
@@ -876,7 +920,18 @@ function MemberDetailModal({ member, onClose, org }) {
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
         </div>
 
-        <div className="px-6 py-4 space-y-4">
+        {/* Tabs */}
+        <div className="flex border-b px-6 flex-shrink-0">
+          {[{id:'details',label:'Details'},{id:'history',label:'Fee History 🖨'}].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === t.id ? 'border-blue-700 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+      {activeTab === 'details' && (
+        <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-2 gap-4 text-sm">
             {[
               ['Member No.', member.member_no],
@@ -938,8 +993,48 @@ function MemberDetailModal({ member, onClose, org }) {
             </div>
           )}
         </div>
+      )}
 
-        <div className="px-6 py-4 border-t flex justify-between items-center">
+      {/* Fee History Tab */}
+      {activeTab === 'history' && (
+        <div className="overflow-y-auto flex-1">
+          {loadingHistory ? (
+            <div className="p-8 text-center text-gray-400">Loading...</div>
+          ) : feeHistory.length === 0 ? (
+            <div className="p-8 text-center text-gray-400">No fee receipts found</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Receipt No.</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Date</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Items</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Amount</th>
+                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500">Reprint</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feeHistory.map((entry, i) => (
+                  <tr key={entry.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                    <td className="px-4 py-2 text-xs font-mono text-gray-500">{entry.receipt_no}</td>
+                    <td className="px-4 py-2 text-xs whitespace-nowrap">{formatDate(entry.entry_date)}</td>
+                    <td className="px-4 py-2 text-xs text-gray-600 max-w-[150px] truncate">{entry.items_collected || entry.description}</td>
+                    <td className="px-4 py-2 text-right text-sm font-semibold text-green-700">₹{Number(entry.amount).toLocaleString('en-IN')}</td>
+                    <td className="px-4 py-2 text-center">
+                      <button onClick={() => handleReprint(entry)}
+                        className="px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded font-medium">
+                        🖨 Reprint
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+        <div className="px-6 py-4 border-t flex justify-between items-center flex-shrink-0">
           <button onClick={onClose} className="btn-secondary">Close</button>
           {Number(member.outstanding_fees) > 0 && (
             <button onClick={() => { onClose(); setTimeout(() => document.dispatchEvent(new CustomEvent('collectFee', { detail: member })), 100) }}
@@ -949,6 +1044,14 @@ function MemberDetailModal({ member, onClose, org }) {
           )}
         </div>
       </div>
+
+      {/* Reprint modal */}
+      {reprintReceipt && (
+        <MemberReceiptPrint
+          receipt={reprintReceipt}
+          onClose={() => setReprintReceipt(null)}
+        />
+      )}
     </div>
   )
 }

@@ -21,6 +21,7 @@ import ComingSoon from './components/ComingSoon'
 import ChequesInHand from './components/ChequesInHand'
 import AuditLog from './components/AuditLog'
 import DayEndReport from './components/DayEndReport'
+import QuickReceipt from './components/QuickReceipt'
 
 function PrivateLayout() {
   const { user, loading, userRole } = useAuth()
@@ -70,6 +71,7 @@ function PrivateLayout() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
+      {['admin','cashier','supervisor'].includes(userRole?.role) && <QuickReceipt />}
     </div>
   )
 }

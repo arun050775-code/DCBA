@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { path: '/rent', label: 'Rent Tracker', icon: Building2, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/cash-bank', label: 'Cash & Bank', icon: IndianRupee, roles: ['admin','supervisor','accountant'] },
   { path: '/income', label: 'Income Register', icon: CreditCard, roles: ['admin','supervisor','accountant'] },
+  { path: '/day-end-report', label: 'Day End Report', icon: FileText, roles: ['admin','cashier','supervisor'] },
   { path: '/cheques-in-hand', label: 'Cheques in Hand', icon: Landmark, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/expenditure', label: 'Expenditure', icon: FileText, roles: ['admin','supervisor','accountant'] },
   { path: '/payroll', label: 'Payroll', icon: UserCheck, roles: ['admin','accountant'] },

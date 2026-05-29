@@ -168,8 +168,16 @@ export default function DayEndReport() {
         .gte('entry_date', startDate).lte('entry_date', endDate)
         .order('entry_date').order('created_at')
 
-      if (!isSupervisor || cashierFilter === 'mine') q = q.eq('created_by', userId)
-      else if (cashierFilter !== 'all') q = q.eq('created_by', cashierFilter)
+      if (!isSupervisor || cashierFilter === 'mine') {
+        // For cashier - show their entries OR entries with no created_by
+        if (!isSupervisor) {
+          q = q.or(`created_by.eq.${userId},created_by.is.null`)
+        } else {
+          q = q.eq('created_by', userId)
+        }
+      } else if (cashierFilter !== 'all') {
+        q = q.eq('created_by', cashierFilter)
+      }
 
       let qr = supabase.from('rent_collections')
         .select('*, vendors(name), cash_accounts(cashier_name), bank_accounts(account_name)')

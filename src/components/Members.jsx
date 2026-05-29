@@ -594,9 +594,11 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
       // Build description
       const items = []
       if (collectMode === 'outstanding') {
-        // New member = admission not paid AND never made a payment before
-        const isNewMember = member.admission_fee_paid !== true && !member.last_fee_paid_date
-        
+        // New member = admission not paid AND membership created within last 30 days
+        const membershipDate = member.membership_date ? new Date(member.membership_date) : null
+        const daysSinceMembership = membershipDate ? (new Date() - membershipDate) / (1000 * 60 * 60 * 24) : 999
+        const isNewMember = member.admission_fee_paid !== true && daysSinceMembership <= 30
+
         if (isNewMember && baseOutstanding > 0) {
           items.push(`Admission Fee ₹${ADMISSION_FEE}`)
           const remainingAfterAdmi = baseOutstanding - ADMISSION_FEE
@@ -609,7 +611,6 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
             items.push(`Annual Subscription ₹${remainingAfterAdmi}`)
           }
         } else if (baseOutstanding > 0) {
-          // Existing member — accrued subscription dues
           items.push(`Accrued Dues ₹${baseOutstanding}`)
         }
         if (form.pay_annual) items.push(`Annual Subscription ₹${ANNUAL_FEE}`)

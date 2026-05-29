@@ -59,7 +59,7 @@ export default function BankEntryModal({ type, org, userRole, bankAccounts: prop
     const { data } = await supabase.from('bank_accounts').select('*').eq('org_id', org.id).eq('is_active', true)
     if (data?.length > 0) {
       setBankAccounts(data)
-      setForm(f => ({ ...f, bank_account_id: f.bank_account_id || data[0].id }))
+      setForm(f => ({ ...f, bank_account_id: data[0].id }))
     }
   }
 

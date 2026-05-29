@@ -57,7 +57,7 @@ export default function CashEntryModal({ type, org, userRole, cashAccounts: prop
     const { data } = await supabase.from('cash_accounts').select('*').eq('org_id', org.id).eq('is_active', true)
     if (data?.length > 0) {
       setCashAccounts(data)
-      setForm(f => ({ ...f, cash_account_id: f.cash_account_id || data[0].id }))
+      setForm(f => ({ ...f, cash_account_id: data[0].id }))
     }
   }
 

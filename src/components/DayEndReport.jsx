@@ -22,45 +22,62 @@ const HEADS = [
   { key: 'others',     label: 'Others',           short: 'Others' },
 ]
 
-// Map entry to head keys
-function mapToHead(entry) {
-  const desc = (entry.description || '').toLowerCase()
-  const head = (entry.head || '').toLowerCase()
-  const items = (entry.items_collected || '').toLowerCase()
+// Fixed fee amounts
+const ADMISSION_FEE = 600
+const ANNUAL_FEE = 600
+const ICARD_FEE = 50
 
+// Map entry to head keys with correct amount splitting
+function mapToHead(entry) {
   const result = {}
   HEADS.forEach(h => result[h.key] = 0)
 
   const amt = entry.amount
+  const items = (entry.items_collected || '').toLowerCase()
+  const desc = (entry.description || '').toLowerCase()
+  const head = (entry.head || '').toLowerCase()
 
-  if (items.includes('admission') || head.includes('admission') || desc.includes('admission')) {
-    result.admi = amt
-  } else if (items.includes('annual subscription') || items.includes('subscription') || head.includes('subscription') || desc.includes('subscription')) {
-    result.sub = amt
-  } else if (entry.source === 'rent' || head.includes('rent') || desc.includes('rent')) {
+  // Rent collection
+  if (entry.source === 'rent' || head.includes('rent income')) {
     result.rent = amt
-  } else if (items.includes('i-card') || head.includes('i-card') || head.includes('icard') || desc.includes('i card') || desc.includes('icard')) {
-    result.icard = amt
-  } else if (head.includes('nomination') || head.includes("nom'n") || desc.includes('nomination')) {
-    result.nomn = amt
-  } else if (head.includes('cost') || head.includes('misc') || head.includes('welfare') || desc.includes('welfare') || desc.includes('cost')) {
-    result.cost = amt
-  } else if (head.includes('sd seat') || head.includes('security deposit seat') || desc.includes('sd seat')) {
-    result.sd_seats = amt
-  } else if (head.includes('library') || desc.includes('library')) {
-    result.library = amt
-  } else if (head.includes('sd locker') || head.includes('locker') || desc.includes('locker')) {
-    result.sd_locker = amt
-  } else {
-    result.others = amt
+    return result
   }
 
-  // If items_collected has multiple — split proportionally (simple: admission + subscription + icard)
-  if (items.includes('accrued dues') || items.includes('arrears')) {
-    Object.keys(result).forEach(k => result[k] = 0)
+  // New member — items_collected has multiple fees
+  if (items.includes('admission') || items.includes('annual subscription') || items.includes('i-card')) {
+    if (items.includes('admission')) result.admi += ADMISSION_FEE
+    if (items.includes('annual subscription') || items.includes('subscription')) result.sub += ANNUAL_FEE
+    if (items.includes('i-card')) result.icard += ICARD_FEE
+    // Any remaining goes to subscription (rounding / accruals)
+    const allocated = result.admi + result.sub + result.icard
+    if (amt > allocated) result.sub += (amt - allocated)
+    return result
+  }
+
+  // Accrued dues / O/S collection → subscription
+  if (items.includes('accrued') || items.includes('arrears') || desc.includes('accrued dues')) {
     result.sub = amt
+    return result
   }
 
+  // Advance payment → subscription
+  if (desc.includes('advance') || head.includes('advance')) {
+    result.sub = amt
+    return result
+  }
+
+  // Single items
+  if (head.includes('admission') || desc.includes('admission fee')) { result.admi = amt; return result }
+  if (head.includes('subscription') || desc.includes('subscription')) { result.sub = amt; return result }
+  if (head.includes('i-card') || head.includes('icard') || desc.includes('i card')) { result.icard = amt; return result }
+  if (head.includes('nomination') || desc.includes('nomination')) { result.nomn = amt; return result }
+  if (head.includes('cost') || head.includes('misc') || head.includes('welfare') || desc.includes('welfare') || desc.includes('cost')) { result.cost = amt; return result }
+  if (head.includes('sd seat') || desc.includes('sd seat')) { result.sd_seats = amt; return result }
+  if (head.includes('library') || desc.includes('library')) { result.library = amt; return result }
+  if (head.includes('locker') || desc.includes('locker')) { result.sd_locker = amt; return result }
+
+  // Default → others
+  result.others = amt
   return result
 }
 

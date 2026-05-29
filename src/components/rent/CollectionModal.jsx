@@ -35,14 +35,17 @@ function nextMonth(mo, yr) {
   return { mo: nm, yr: ny }
 }
 
-export default function CollectionModal({ vendor, org, userRole, onClose, onSuccess }) {
-  const outstanding = computeOutstanding(vendor)
-  const mDue = monthsDue(vendor)
-  const next = nextMonth(vendor.paid_upto_month, vendor.paid_upto_year)
+export default function CollectionModal({ vendor: propVendor, org, userRole, onClose, onSuccess }) {
+  const [vendor, setVendor] = useState(propVendor || null)
+  const [vendors, setVendors] = useState([])
+
+  const outstanding = vendor ? computeOutstanding(vendor) : 0
+  const mDue = vendor ? monthsDue(vendor) : 0
+  const next = nextMonth(vendor?.paid_upto_month, vendor?.paid_upto_year)
 
   const [form, setForm] = useState({
     collection_date: new Date().toISOString().split('T')[0],
-    amount: vendor.monthly_rent || '',
+    amount: vendor?.monthly_rent || '',
     payment_mode: 'cash',
     receipt_no: '',
     from_month: next.mo,
@@ -54,6 +57,8 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
     bank_name: '',
     transaction_id: '',
     remarks: '',
+    others_amount: '',
+    others_description: '',
   })
   const [bankAccounts, setBankAccounts] = useState([])
   const [cashAccounts, setCashAccounts] = useState([])
@@ -63,7 +68,28 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
   useEffect(() => {
     generateReceiptNo(org.id, org.short_name).then(no => setForm(f => ({...f, receipt_no: no})))
     fetchAccounts()
+    if (!propVendor) fetchVendors()
   }, [])
+
+  async function fetchVendors() {
+    const { data } = await supabase.from('vendors')
+      .select('*').eq('org_id', org.id).eq('status', 'active').order('name')
+    setVendors(data || [])
+  }
+
+  function handleVendorChange(vendorId) {
+    const v = vendors.find(v => v.id === vendorId)
+    setVendor(v || null)
+    if (v) {
+      const next = nextMonth(v.paid_upto_month, v.paid_upto_year)
+      setForm(f => ({
+        ...f,
+        amount: v.monthly_rent || '',
+        from_month: next.mo, from_year: next.yr,
+        to_month: next.mo, to_year: next.yr,
+      }))
+    }
+  }
 
   async function fetchAccounts() {
     const [{ data: banks }, { data: cash }] = await Promise.all([
@@ -82,6 +108,10 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
     return `${fromM} ${form.from_year} to ${toM} ${form.to_year}`
   }
 
+  const rentAmount = Number(form.amount) || 0
+  const othersAmount = Number(form.others_amount) || 0
+  const totalAmount = rentAmount + othersAmount
+
   function recalcAmount(fm, fy, tm, ty) {
     if (!vendor.monthly_rent) return
     let months = 0, yr = fy, mo = fm - 1
@@ -95,7 +125,8 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
   }
 
   async function handleSave() {
-    if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter amount')
+    if (!vendor) return toast.error('Select vendor')
+    if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter rent amount')
     if (!form.receipt_no) return toast.error('Receipt number missing')
     if (!selectedAccount) return toast.error('Select account')
     if (form.payment_mode === 'cheque' && !form.cheque_no) return toast.error('Enter cheque number')
@@ -106,13 +137,14 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
       const payload = {
         org_id: org.id, vendor_id: vendor.id,
         receipt_no: form.receipt_no, collection_date: form.collection_date,
-        amount: Number(form.amount), payment_mode: form.payment_mode,
+        amount: totalAmount,
+        payment_mode: form.payment_mode,
         from_month: form.from_month, from_year: form.from_year,
         to_month: form.to_month, to_year: form.to_year,
         months_covered: getPeriodLabel(),
         bank_account_id: accountType === 'bank' ? accountId : null,
         cash_account_id: accountType === 'cash' ? accountId : null,
-        remarks: form.remarks,
+        remarks: form.remarks + (othersAmount > 0 ? ` | Others: ${form.others_description} ₹${othersAmount}` : ''),
         cheque_no: form.payment_mode === 'cheque' ? form.cheque_no : null,
         cheque_date: form.payment_mode === 'cheque' ? form.cheque_date : null,
         bank_name: form.payment_mode === 'cheque' ? form.bank_name : null,
@@ -131,13 +163,15 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
       onSuccess({
         receipt_no: form.receipt_no, date: form.collection_date,
         vendor_name: vendor.name, vendor_mobile: vendor.mobile,
-        amount: Number(form.amount),
-        amount_words: numberToWords(Number(form.amount)) + ' Rupees Only',
+        amount: totalAmount,
+        amount_words: numberToWords(totalAmount) + ' Rupees Only',
         period: getPeriodLabel(), payment_mode: form.payment_mode,
         cashier_name: userRole?.name, org_name: org.name,
         cheque_no: form.cheque_no, cheque_date: form.cheque_date,
         bank_name: form.bank_name, transaction_id: form.transaction_id,
         remarks: form.remarks,
+        others_amount: othersAmount,
+        others_description: form.others_description,
       })
     } catch (err) { toast.error(err.message) }
     setSaving(false)
@@ -151,27 +185,45 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
             <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <Receipt className="w-5 h-5 text-green-600" /> Collect Rent
             </h3>
-            <p className="text-sm text-gray-500 mt-0.5">{vendor.name}</p>
+            <p className="text-sm text-gray-500 mt-0.5">{vendor?.name || 'Select vendor below'}</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
+
+          {/* Vendor selector — only if not pre-selected */}
+          {!propVendor && (
+            <div>
+              <label className="label">Vendor *</label>
+              <select className="input" value={vendor?.id || ''}
+                onChange={e => handleVendorChange(e.target.value)}>
+                <option value="">— Select Vendor —</option>
+                {vendors.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} {v.vendor_categories?.name ? `(${v.vendor_categories.name})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* O/S Summary */}
-          <div className={`rounded-lg p-3 text-sm border ${outstanding > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
-            <div className="flex justify-between items-center">
-              <span className={`font-semibold ${outstanding > 0 ? 'text-orange-700' : 'text-green-700'}`}>
-                {outstanding > 0 ? '⚠ Outstanding' : '✓ Clear'}
-              </span>
-              <span className={`font-bold text-lg ${outstanding > 0 ? 'text-orange-800' : 'text-green-800'}`}>
-                ₹{outstanding.toLocaleString('en-IN')}
-              </span>
+          {vendor && (
+            <div className={`rounded-lg p-3 text-sm border ${outstanding > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
+              <div className="flex justify-between items-center">
+                <span className={`font-semibold ${outstanding > 0 ? 'text-orange-700' : 'text-green-700'}`}>
+                  {outstanding > 0 ? '⚠ Outstanding' : '✓ Clear'}
+                </span>
+                <span className={`font-bold text-lg ${outstanding > 0 ? 'text-orange-800' : 'text-green-800'}`}>
+                  ₹{outstanding.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="flex gap-4 mt-1 text-xs text-gray-500">
+                <span>Paid upto: <strong>{paidUptoLabel(vendor)}</strong></span>
+                {mDue > 0 && <span>Months due: <strong>{mDue}</strong></span>}
+              </div>
             </div>
-            <div className="flex gap-4 mt-1 text-xs text-gray-500">
-              <span>Paid upto: <strong>{paidUptoLabel(vendor)}</strong></span>
-              {mDue > 0 && <span>Months due: <strong>{mDue}</strong></span>}
-            </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -216,13 +268,12 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
           </div>
 
           <div>
-            <label className="label">Amount (₹) *</label>
+            <label className="label">Rent Amount (₹) *</label>
             <div className="relative">
               <IndianRupee className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
               <input type="number" className="input pl-8 text-lg font-semibold" value={form.amount}
                 onChange={e => setForm({...form, amount: e.target.value})} placeholder="0" />
             </div>
-            {form.amount > 0 && <p className="text-xs text-gray-500 mt-1 italic">{numberToWords(Number(form.amount))} Rupees Only</p>}
           </div>
 
           <div>
@@ -283,6 +334,41 @@ export default function CollectionModal({ vendor, org, userRole, onClose, onSucc
             <label className="label">Remarks</label>
             <input className="input" value={form.remarks} onChange={e => setForm({...form, remarks: e.target.value})} placeholder="Optional" />
           </div>
+
+          {/* Others */}
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Others (Optional)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Others Amount (₹)</label>
+                <input type="number" className="input" value={form.others_amount}
+                  onChange={e => setForm({...form, others_amount: e.target.value})}
+                  placeholder="0" />
+              </div>
+              <div>
+                <label className="label">Description</label>
+                <input className="input" value={form.others_description}
+                  onChange={e => setForm({...form, others_description: e.target.value})}
+                  placeholder="e.g. Welfare Fund, Donation" />
+              </div>
+            </div>
+          </div>
+
+          {/* Total */}
+          {(rentAmount > 0 || othersAmount > 0) && (
+            <div className="bg-blue-50 rounded-lg p-3 flex justify-between items-center">
+              <div className="text-sm text-blue-700">
+                Rent: ₹{rentAmount.toLocaleString('en-IN')}
+                {othersAmount > 0 && <span> + Others: ₹{othersAmount.toLocaleString('en-IN')}</span>}
+              </div>
+              <div className="text-lg font-bold text-blue-800">
+                Total: ₹{totalAmount.toLocaleString('en-IN')}
+              </div>
+            </div>
+          )}
+          {totalAmount > 0 && (
+            <p className="text-xs text-gray-500 italic">{numberToWords(totalAmount)} Rupees Only</p>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t bg-gray-50 flex gap-3 justify-end">

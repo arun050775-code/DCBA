@@ -16,6 +16,7 @@ export default function IncomeRegister() {
   const { currentOrg, userRole } = useAuth()
   const [entries, setEntries] = useState([])
   const [rentCollections, setRentCollections] = useState([])
+  const [onlinePayments, setOnlinePayments] = useState([])
   const [heads, setHeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
@@ -46,7 +47,7 @@ export default function IncomeRegister() {
     setLoading(true)
     const startDate = `${filterYear}-${String(filterMonth).padStart(2,'0')}-01`
     const endDate = new Date(filterYear, filterMonth, 0).toISOString().split('T')[0]
-    const [{ data: inc }, { data: rent }, { data: h }] = await Promise.all([
+    const [{ data: inc }, { data: rent }, { data: h }, { data: online }] = await Promise.all([
       supabase.from('income_entries')
         .select('*, account_heads(name), account_sub_heads(name), cash_accounts(cashier_name), bank_accounts(account_name)')
         .eq('org_id', currentOrg.id)
@@ -58,9 +59,17 @@ export default function IncomeRegister() {
         .gte('collection_date', startDate).lte('collection_date', endDate)
         .order('collection_date'),
       supabase.from('account_heads').select('*').eq('org_id', currentOrg.id).eq('type', 'income').eq('is_active', true).order('sort_order'),
+      supabase.from('dcba_member_fees')
+        .select('*, dcba_members(member_name, member_no)')
+        .eq('org_id', currentOrg.id)
+        .eq('payment_mode', 'online')
+        .gte('payment_date', startDate).lte('payment_date', endDate)
+        .order('payment_date'),
     ])
     setEntries(inc || [])
     setRentCollections(rent || [])
+    setOnlinePayments(online || [])
+    console.log('Online payments fetched:', online?.length, online)
     setHeads(h || [])
     setLoading(false)
   }
@@ -119,6 +128,18 @@ export default function IncomeRegister() {
       type: 'income', raw: e, is_cancelled: e.is_cancelled,
       created_at: e.created_at,
     }))),
+    // Online payments via Razorpay
+    ...(onlinePayments.map(o => ({
+      id: o.id, date: o.payment_date, ref_no: o.receipt_no,
+      head: 'Member Fee',
+      sub_head: 'Online — Razorpay',
+      description: o.description || `${o.fee_type === 'annual' ? 'Annual Subscription' : o.fee_type} — ${o.dcba_members?.member_name || ''} (${o.dcba_members?.member_no || ''})`,
+      amount: o.amount, mode: 'online',
+      account: 'Razorpay',
+      type: 'online', raw: o, is_cancelled: false,
+      created_at: o.created_at,
+      razorpay_id: o.razorpay_payment_id,
+    }))),
   ].sort((a, b) => new Date(a.date) - new Date(b.date))
 
   const filtered = allIncome.filter(e => {
@@ -170,7 +191,14 @@ export default function IncomeRegister() {
           <p className="text-xs font-medium text-green-600">Total Income</p>
           <p className="text-xs text-green-500">{MONTHS[filterMonth - 1]} {filterYear}</p>
         </div>
-        {Object.entries(summary).slice(0, 3).map(([key, val]) => (
+        {onlinePayments.length > 0 && (
+          <div className="rounded-xl border bg-purple-50 border-purple-200 p-4">
+            <p className="text-lg font-bold text-purple-700">₹{onlinePayments.reduce((s,o) => s + Number(o.amount), 0).toLocaleString('en-IN')}</p>
+            <p className="text-xs font-medium text-purple-600 mt-1">💳 Online (Razorpay)</p>
+            <p className="text-xs text-purple-400">{onlinePayments.length} transaction{onlinePayments.length > 1 ? 's' : ''}</p>
+          </div>
+        )}
+        {Object.entries(summary).slice(0, onlinePayments.length > 0 ? 2 : 3).map(([key, val]) => (
           <div key={key} className="rounded-xl border bg-white border-gray-200 p-4">
             <p className="text-lg font-bold text-gray-800">₹{Number(val).toLocaleString('en-IN')}</p>
             <p className="text-xs font-medium text-gray-600 mt-1 truncate">{key}</p>
@@ -218,9 +246,10 @@ export default function IncomeRegister() {
               ) : (
                 <>
                   {filtered.map((e, i) => {
-                    const cancelAllowed = canCancel(e.raw, role, 'receipt')
+                    const cancelAllowed = e.type !== 'online' && canCancel(e.raw, role, 'receipt')
+                    const isOnline = e.type === 'online'
                     return (
-                      <tr key={e.id + e.type} className={`${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-green-50/20 ${e.is_cancelled ? 'opacity-50' : ''}`}>
+                      <tr key={e.id + e.type} className={`${isOnline ? 'bg-purple-50/60' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-green-50/20 ${e.is_cancelled ? 'opacity-50' : ''}`}>
                         <td className="table-cell text-xs whitespace-nowrap">{formatDate(e.date)}</td>
                         <td className="table-cell text-xs font-mono text-gray-500">{e.ref_no || '—'}</td>
                         <td className="table-cell text-xs">
@@ -228,8 +257,18 @@ export default function IncomeRegister() {
                           {e.sub_head && <div className="text-gray-400">{e.sub_head}</div>}
                         </td>
                         <td className="table-cell text-sm max-w-xs truncate">{e.description || '—'}</td>
-                        <td className="table-cell text-xs capitalize">{e.mode}</td>
-                        <td className="table-cell text-xs text-gray-500">{e.account}</td>
+                        <td className="table-cell text-xs">
+                          {isOnline
+                            ? <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">💳 Online</span>
+                            : <span className="capitalize">{e.mode}</span>
+                          }
+                        </td>
+                        <td className="table-cell text-xs text-gray-500">
+                          {isOnline
+                            ? <span className="font-mono text-xs text-purple-600">{e.razorpay_id?.slice(-8) || 'Razorpay'}</span>
+                            : e.account
+                          }
+                        </td>
                         <td className="table-cell text-right font-semibold text-green-700">
                           ₹{Number(e.amount).toLocaleString('en-IN')}
                         </td>
@@ -239,6 +278,9 @@ export default function IncomeRegister() {
                               className="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded font-medium flex items-center gap-1">
                               <XCircle className="w-3 h-3" /> Cancel
                             </button>
+                          )}
+                          {isOnline && (
+                            <span className="text-xs text-purple-400">Auto</span>
                           )}
                         </td>
                       </tr>

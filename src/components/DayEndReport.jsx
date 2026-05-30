@@ -201,7 +201,7 @@ export default function DayEndReport() {
         .gte('collection_date', startDate).lte('collection_date', endDate)
         .order('collection_date')
 
-      // Online payments from dcba_member_fees
+      // Online payments — always show all for org (no cashier filter, member portal payments)
       let qo = supabase.from('dcba_member_fees')
         .select('*, dcba_members(member_name, member_no)')
         .eq('org_id', currentOrg.id)

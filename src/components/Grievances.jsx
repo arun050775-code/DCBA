@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { AlertCircle, Plus, Search, Eye, CheckCircle, Clock, XCircle, MessageSquare, Wrench, Users } from 'lucide-react'
+import { AlertCircle, Plus, Search, Eye, CheckCircle, Clock, XCircle, MessageSquare, Wrench, Users, ClipboardList } from 'lucide-react'
 
 const CATEGORIES = {
   infrastructure: {
@@ -65,6 +65,7 @@ function formatDate(d) {
 
 export default function Grievances() {
   const { currentOrg, userRole } = useAuth()
+  const [mainTab, setMainTab] = useState('grievances') // 'grievances' | 'requests'
   const [grievances, setGrievances] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -117,17 +118,39 @@ export default function Grievances() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <AlertCircle className="w-6 h-6 text-red-600" /> Grievances
+            <AlertCircle className="w-6 h-6 text-red-600" /> Grievances & Requests
           </h1>
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New Grievance
+        {mainTab === 'grievances' && (
+          <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" /> New Grievance
+          </button>
+        )}
+      </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
+        <button onClick={() => setMainTab('grievances')}
+          className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all ${mainTab === 'grievances' ? 'bg-white shadow text-red-700' : 'text-gray-500 hover:text-gray-700'}`}>
+          <AlertCircle className="w-4 h-4" /> Grievances
+        </button>
+        <button onClick={() => setMainTab('requests')}
+          className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all ${mainTab === 'requests' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>
+          <ClipboardList className="w-4 h-4" /> Member Requests
         </button>
       </div>
+
+      {/* Requests tab */}
+      {mainTab === 'requests' && (
+        <AdminRequestsPanel org={currentOrg} />
+      )}
+
+      {/* Grievances tab */}
+      {mainTab === 'grievances' && (<>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -256,6 +279,7 @@ export default function Grievances() {
           onSuccess={() => { setShowDetail(null); fetchGrievances() }}
         />
       )}
+      </>) /* end grievances tab */}
     </div>
   )
 }
@@ -553,6 +577,175 @@ function GrievanceDetailModal({ grievance: g, org, userRole, isAdmin, onClose, o
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- ADMIN REQUESTS PANEL ----
+const REQUEST_TYPES = {
+  experience_letter: { label: 'Experience Letter', color: 'bg-blue-100 text-blue-700' },
+  icard:             { label: 'I-Card',             color: 'bg-purple-100 text-purple-700' },
+  seat_allotment:    { label: 'Seat Allotment',     color: 'bg-green-100 text-green-700' },
+  locker_allotment:  { label: 'Locker Allotment',   color: 'bg-orange-100 text-orange-700' },
+}
+
+const REQ_STATUS = {
+  pending:   { label: 'Pending',   color: 'bg-yellow-100 text-yellow-700' },
+  approved:  { label: 'Approved',  color: 'bg-green-100 text-green-700' },
+  rejected:  { label: 'Rejected',  color: 'bg-red-100 text-red-700' },
+  completed: { label: 'Completed', color: 'bg-blue-100 text-blue-700' },
+}
+
+function AdminRequestsPanel({ org }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filterType, setFilterType] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [remarkModal, setRemarkModal] = useState(null)
+
+  useEffect(() => { if (org) fetchRequests() }, [org, filterType, filterStatus])
+
+  async function fetchRequests() {
+    setLoading(true)
+    let q = supabase.from('dcba_member_requests')
+      .select('*, dcba_members(member_name, member_no, mobile, email)')
+      .eq('org_id', org.id)
+      .order('created_at', { ascending: false })
+
+    if (filterType !== 'all') q = q.eq('request_type', filterType)
+    if (filterStatus !== 'all') q = q.eq('status', filterStatus)
+
+    const { data } = await q
+    setRequests(data || [])
+    setLoading(false)
+  }
+
+  async function updateStatus(id, status) {
+    const { data: { session } } = await supabase.auth.getSession()
+    await supabase.from('dcba_member_requests').update({
+      status,
+      processed_by: session?.user?.id,
+      processed_at: new Date().toISOString(),
+    }).eq('id', id)
+    toast.success(`Marked as ${status}`)
+    fetchRequests()
+  }
+
+  return (
+    <div>
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        {['pending','approved','rejected','completed'].map(s => {
+          const cnt = requests.filter(r => r.status === s).length
+          return (
+            <div key={s} className={`rounded-xl border p-3 ${REQ_STATUS[s]?.color} border-current/20`}>
+              <p className="text-2xl font-bold">{cnt}</p>
+              <p className="text-xs font-semibold opacity-80">{REQ_STATUS[s]?.label}</p>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Filters */}
+      <div className="card mb-4 p-4">
+        <div className="flex flex-wrap gap-3">
+          <div>
+            <p className="text-xs text-gray-400 mb-1 font-medium">Request Type</p>
+            <div className="flex gap-2 flex-wrap">
+              {[{id:'all',label:'All'}, ...Object.entries(REQUEST_TYPES).map(([k,v]) => ({id:k,label:v.label}))].map(f => (
+                <button key={f.id} onClick={() => setFilterType(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${filterType === f.id ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200'}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-1 font-medium">Status</p>
+            <div className="flex gap-2 flex-wrap">
+              {[{id:'all',label:'All'}, ...Object.entries(REQ_STATUS).map(([k,v]) => ({id:k,label:v.label}))].map(f => (
+                <button key={f.id} onClick={() => setFilterStatus(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${filterStatus === f.id ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200'}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Requests list */}
+      <div className="space-y-3">
+        {loading ? (
+          <p className="text-center text-gray-400 py-8">Loading...</p>
+        ) : requests.length === 0 ? (
+          <div className="card p-8 text-center">
+            <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 text-sm">No requests found</p>
+          </div>
+        ) : requests.map(r => {
+          const type = REQUEST_TYPES[r.request_type]
+          const status = REQ_STATUS[r.status]
+          return (
+            <div key={r.id} className="card p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${type?.color}`}>{type?.label}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${status?.color}`}>{status?.label}</span>
+                    {r.request_no && <span className="text-xs font-mono text-gray-400">{r.request_no}</span>}
+                  </div>
+                  <p className="font-semibold text-gray-800">{r.dcba_members?.member_name}</p>
+                  <p className="text-xs text-gray-500">{r.dcba_members?.member_no} · {r.dcba_members?.mobile || '—'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{new Date(r.request_date).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'})}</p>
+
+                  {/* Type-specific info */}
+                  {r.request_type === 'experience_letter' && r.el_purpose && (
+                    <p className="text-xs text-blue-700 mt-1 bg-blue-50 rounded px-2 py-1">Purpose: {r.el_purpose}</p>
+                  )}
+                  {r.request_type === 'icard' && (
+                    <p className="text-xs text-purple-700 mt-1 bg-purple-50 rounded px-2 py-1">
+                      Fee ₹{r.icard_fee_amount} · {r.icard_fee_paid ? '✅ Paid' : '⏳ Not paid'}
+                      {r.icard_transaction_ref ? ` · Ref: ${r.icard_transaction_ref}` : ''}
+                      {r.icard_payment_mode ? ` · ${r.icard_payment_mode.toUpperCase()}` : ''}
+                    </p>
+                  )}
+                  {(r.request_type === 'seat_allotment' || r.request_type === 'locker_allotment') && r.preferred_location && (
+                    <p className="text-xs text-green-700 mt-1 bg-green-50 rounded px-2 py-1">Preference: {r.preferred_location}</p>
+                  )}
+                  {r.admin_remarks && (
+                    <p className="text-xs text-gray-500 mt-1 italic">Remark: {r.admin_remarks}</p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                {r.status === 'pending' && (
+                  <div className="flex flex-col gap-1.5 flex-shrink-0">
+                    <button onClick={() => updateStatus(r.id, 'approved')}
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg font-semibold whitespace-nowrap">
+                      ✓ Approve
+                    </button>
+                    <button onClick={() => updateStatus(r.id, 'completed')}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-semibold whitespace-nowrap">
+                      ✓✓ Complete
+                    </button>
+                    <button onClick={() => updateStatus(r.id, 'rejected')}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg font-semibold whitespace-nowrap">
+                      ✕ Reject
+                    </button>
+                  </div>
+                )}
+                {r.status === 'approved' && (
+                  <button onClick={() => updateStatus(r.id, 'completed')}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-semibold flex-shrink-0">
+                    Mark Complete
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

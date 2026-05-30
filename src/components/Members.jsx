@@ -869,6 +869,37 @@ function MemberDetailModal({ member, onClose, org }) {
   const [feeHistory, setFeeHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [reprintReceipt, setReprintReceipt] = useState(null)
+  const [editAllotments, setEditAllotments] = useState(false)
+  const [allotments, setAllotments] = useState({
+    chamber: member.chamber || '',
+    office: member.office || '',
+    locker_no: member.locker_no || '',
+    seat_no: member.seat_no || '',
+    hall_no: member.hall_no || '',
+    dob: member.dob || '',
+  })
+  const [savingAllotments, setSavingAllotments] = useState(false)
+
+  async function saveAllotments() {
+    setSavingAllotments(true)
+    try {
+      const { error } = await supabase.from('dcba_members').update({
+        chamber: allotments.chamber || null,
+        office: allotments.office || null,
+        locker_no: allotments.locker_no || null,
+        seat_no: allotments.seat_no || null,
+        hall_no: allotments.hall_no || null,
+        dob: allotments.dob || null,
+      }).eq('id', member.id)
+      if (error) throw error
+      toast.success('Details updated!')
+      setEditAllotments(false)
+      Object.assign(member, allotments)
+    } catch (err) {
+      toast.error(err.message)
+    }
+    setSavingAllotments(false)
+  }
 
   useEffect(() => {
     if (activeTab === 'history') fetchFeeHistory()
@@ -1006,6 +1037,82 @@ function MemberDetailModal({ member, onClose, org }) {
               <p className="text-sm text-gray-700">{member.address}</p>
             </div>
           )}
+
+          {/* Chamber / Locker / Seat section */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-bold text-gray-700">Court & DCBA Allotments</p>
+              <button onClick={() => setEditAllotments(!editAllotments)}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50">
+                {editAllotments ? 'Cancel' : '✏️ Edit'}
+              </button>
+            </div>
+
+            {editAllotments ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="label text-xs">Chamber No. <span className="text-gray-400 font-normal">(Court allotted)</span></label>
+                  <input className="input text-sm" value={allotments.chamber}
+                    onChange={e => setAllotments({ ...allotments, chamber: e.target.value })}
+                    placeholder="e.g. 12A, Block B" />
+                </div>
+                <div>
+                  <label className="label text-xs">Office Address</label>
+                  <textarea className="input text-sm h-14 resize-none" value={allotments.office}
+                    onChange={e => setAllotments({ ...allotments, office: e.target.value })}
+                    placeholder="Office address" />
+                </div>
+                <div>
+                  <label className="label text-xs">Locker No. <span className="text-gray-400 font-normal">(DCBA allotted)</span></label>
+                  <input className="input text-sm" value={allotments.locker_no}
+                    onChange={e => setAllotments({ ...allotments, locker_no: e.target.value })}
+                    placeholder="e.g. L-001" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="label text-xs">Hall No.</label>
+                    <input className="input text-sm" value={allotments.hall_no}
+                      onChange={e => setAllotments({ ...allotments, hall_no: e.target.value })}
+                      placeholder="e.g. Hall 1" />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Seat No.</label>
+                    <input className="input text-sm" value={allotments.seat_no}
+                      onChange={e => setAllotments({ ...allotments, seat_no: e.target.value })}
+                      placeholder="e.g. 15" />
+                  </div>
+                </div>
+                <div>
+                  <label className="label text-xs">Date of Birth</label>
+                  <input type="date" className="input text-sm" value={allotments.dob}
+                    onChange={e => setAllotments({ ...allotments, dob: e.target.value })} />
+                </div>
+                <button onClick={saveAllotments} disabled={savingAllotments}
+                  className="btn-primary w-full text-sm py-2">
+                  {savingAllotments ? 'Saving...' : '💾 Save'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {[
+                  ['🏛️ Chamber', member.chamber || allotments.chamber || '—'],
+                  ['🏢 Office', member.office || allotments.office || '—'],
+                  ['🔒 Locker', member.locker_no || allotments.locker_no || 'Not allotted'],
+                  ['🪑 Seat', (member.seat_no || allotments.seat_no)
+                    ? `${member.hall_no || allotments.hall_no || ''} · Seat ${member.seat_no || allotments.seat_no}`.trim()
+                    : 'Not allotted'],
+                  ['🎂 DOB', member.dob || allotments.dob ? formatDate(member.dob || allotments.dob) : '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between items-center py-1 border-b border-gray-100 last:border-0">
+                    <span className="text-xs text-gray-500">{label}</span>
+                    <span className={`text-xs font-semibold ${value === '—' || value === 'Not allotted' ? 'text-gray-400' : 'text-gray-800'}`}>
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

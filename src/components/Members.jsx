@@ -331,6 +331,7 @@ export default function Members() {
           member={showDetailModal}
           onClose={() => setShowDetailModal(null)}
           org={currentOrg}
+          userRole={userRole}
         />
       )}
     </div>
@@ -863,7 +864,8 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
 }
 
 // ---- MEMBER DETAIL MODAL ----
-function MemberDetailModal({ member, onClose, org }) {
+function MemberDetailModal({ member, onClose, org, userRole }) {
+  const isAdmin = ['admin', 'supervisor', 'cashier'].includes(userRole?.role)
   const anniv = getAnniversaryStatus(member.membership_date)
   const [activeTab, setActiveTab] = useState('details')
   const [feeHistory, setFeeHistory] = useState([])
@@ -1042,10 +1044,12 @@ function MemberDetailModal({ member, onClose, org }) {
           <div className="bg-gray-50 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-bold text-gray-700">Court & DCBA Allotments</p>
-              <button onClick={() => setEditAllotments(!editAllotments)}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50">
-                {editAllotments ? 'Cancel' : '✏️ Edit'}
-              </button>
+              {isAdmin && (
+                <button onClick={() => setEditAllotments(!editAllotments)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50">
+                  {editAllotments ? 'Cancel' : '✏️ Edit'}
+                </button>
+              )}
             </div>
 
             {editAllotments ? (

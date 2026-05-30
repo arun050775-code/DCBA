@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 import {
   Lock, Sofa, Plus, Search, Eye, IndianRupee,
-  RotateCcw, CheckCircle, AlertCircle, Upload, X, Printer
+  RotateCcw, CheckCircle, AlertCircle, Upload, X, Printer, Download, FileSpreadsheet
 } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -31,10 +32,64 @@ export default function LockerSeatManagement() {
   const [showRefund, setShowRefund] = useState(null)
   const [showDetail, setShowDetail] = useState(null)
   const [showRequests, setShowRequests] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   const isCashier = ['admin', 'cashier', 'supervisor'].includes(userRole?.role)
 
-  useEffect(() => { if (currentOrg) fetchItems() }, [currentOrg, tab])
+  function downloadTemplate() {
+    const wb = XLSX.utils.book_new()
+
+    // Lockers sheet
+    const lockerData = [
+      ['Locker No.', 'Member No.', 'Security Deposit (₹)', 'Receipt No.', 'Allotment Date (DD-MM-YYYY)', 'Remarks'],
+      ['L-001', 'A-1001', 500, 'DCBA/DEP/2025-26/0001', '01-04-2025', 'Sample'],
+      ['L-002', 'A-1002', 500, 'DCBA/DEP/2025-26/0002', '01-04-2025', ''],
+      ['L-003', '', '', '', '', 'Vacant — no member no. needed'],
+    ]
+    const ws1 = XLSX.utils.aoa_to_sheet(lockerData)
+    ws1['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, { wch: 30 }]
+    XLSX.utils.book_append_sheet(wb, ws1, 'Lockers')
+
+    // Seats sheet
+    const seatData = [
+      ['Hall No.', 'Seat No.', 'Member No.', 'Security Deposit (₹)', 'Receipt No.', 'Allotment Date (DD-MM-YYYY)', 'Remarks'],
+      ['Hall 1', '15', 'A-1001', 200, 'DCBA/DEP/2025-26/0003', '01-04-2025', 'Sample'],
+      ['Hall 1', '16', 'A-1002', 200, 'DCBA/DEP/2025-26/0004', '01-04-2025', ''],
+      ['Hall 2', '5', '', '', '', '', 'Vacant'],
+    ]
+    const ws2 = XLSX.utils.aoa_to_sheet(seatData)
+    ws2['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, { wch: 30 }]
+    XLSX.utils.book_append_sheet(wb, ws2, 'Seats')
+
+    // Instructions sheet
+    const instrData = [
+      ['DCBA — Locker & Seat Bulk Import Instructions'],
+      [],
+      ['LOCKERS sheet:'],
+      ['• Locker No. — Required (e.g. L-001)'],
+      ['• Member No. — Leave blank if vacant'],
+      ['• Security Deposit — Amount in ₹ (e.g. 500)'],
+      ['• Receipt No. — Existing receipt number if available'],
+      ['• Allotment Date — DD-MM-YYYY format'],
+      ['• Remarks — Optional notes'],
+      [],
+      ['SEATS sheet:'],
+      ['• Hall No. — Required (e.g. Hall 1)'],
+      ['• Seat No. — Required (e.g. 15)'],
+      ['• Member No. — Leave blank if vacant'],
+      ['• Security Deposit — Amount in ₹'],
+      ['• Receipt No. — Existing receipt number if available'],
+      ['• Allotment Date — DD-MM-YYYY format'],
+      [],
+      ['NOTE: Member No. must match exactly with existing members in DCBA system'],
+    ]
+    const ws3 = XLSX.utils.aoa_to_sheet(instrData)
+    ws3['!cols'] = [{ wch: 60 }]
+    XLSX.utils.book_append_sheet(wb, ws3, 'Instructions')
+
+    XLSX.writeFile(wb, 'DCBA_LockerSeat_Import_Template.xlsx')
+    toast.success('Template downloaded!')
+  }
 
   async function fetchItems() {
     setLoading(true)
@@ -81,6 +136,16 @@ export default function LockerSeatManagement() {
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => downloadTemplate()}
+            className="btn-secondary flex items-center gap-2 text-sm">
+            <Download className="w-4 h-4" /> Template
+          </button>
+          {isCashier && (
+            <button onClick={() => setShowImport(true)}
+              className="btn-secondary flex items-center gap-2 text-sm">
+              <FileSpreadsheet className="w-4 h-4" /> Bulk Import
+            </button>
+          )}
           <button onClick={() => setShowRequests(true)}
             className="btn-secondary flex items-center gap-2 text-sm">
             <AlertCircle className="w-4 h-4" /> Allotment Requests
@@ -248,6 +313,9 @@ export default function LockerSeatManagement() {
       )}
       {showDetail && (
         <DetailModal item={showDetail} org={currentOrg} onClose={() => setShowDetail(null)} />
+      )}
+      {showImport && (
+        <BulkImportModal org={currentOrg} onClose={() => setShowImport(false)} onSuccess={() => { setShowImport(false); fetchItems() }} />
       )}
       {showRequests && (
         <AllotmentRequestsModal org={currentOrg} onClose={() => setShowRequests(false)} onSuccess={() => { setShowRequests(false); fetchItems() }} />
@@ -996,6 +1064,339 @@ function AllotmentRequestsModal({ org, onClose }) {
         </div>
         <div className="px-6 py-4 border-t flex-shrink-0">
           <button onClick={onClose} className="btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- BULK IMPORT MODAL ----
+function BulkImportModal({ org, onClose, onSuccess }) {
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState(null) // { lockers: [], seats: [] }
+  const [importing, setImporting] = useState(false)
+  const [errors, setErrors] = useState([])
+  const [step, setStep] = useState(1) // 1=upload, 2=preview, 3=done
+
+  function parseDate(str) {
+    if (!str) return null
+    // Handle DD-MM-YYYY
+    const parts = String(str).split('-')
+    if (parts.length === 3 && parts[0].length <= 2) {
+      return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`
+    }
+    // Handle Excel serial date
+    if (!isNaN(str)) {
+      const d = new Date((Number(str) - 25569) * 86400 * 1000)
+      return d.toISOString().split('T')[0]
+    }
+    return null
+  }
+
+  function handleFile(e) {
+    const f = e.target.files[0]
+    if (!f) return
+    setFile(f)
+    setErrors([])
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'binary' })
+        const errs = []
+
+        // Parse Lockers sheet
+        const lockerSheet = wb.Sheets['Lockers']
+        const lockers = []
+        if (lockerSheet) {
+          const rows = XLSX.utils.sheet_to_json(lockerSheet, { header: 1, defval: '' })
+          rows.slice(1).forEach((row, i) => {
+            if (!row[0]) return // skip empty rows
+            const lockerNo = String(row[0]).trim()
+            const memberNo = String(row[1] || '').trim()
+            const deposit = Number(row[2]) || 0
+            const receiptNo = String(row[3] || '').trim()
+            const allotDate = parseDate(row[4])
+            const remarks = String(row[5] || '').trim()
+
+            if (!lockerNo) { errs.push(`Lockers row ${i+2}: Locker No. required`); return }
+
+            lockers.push({ lockerNo, memberNo, deposit, receiptNo, allotDate, remarks })
+          })
+        }
+
+        // Parse Seats sheet
+        const seatSheet = wb.Sheets['Seats']
+        const seats = []
+        if (seatSheet) {
+          const rows = XLSX.utils.sheet_to_json(seatSheet, { header: 1, defval: '' })
+          rows.slice(1).forEach((row, i) => {
+            if (!row[0] && !row[1]) return
+            const hallNo = String(row[0] || '').trim()
+            const seatNo = String(row[1] || '').trim()
+            const memberNo = String(row[2] || '').trim()
+            const deposit = Number(row[3]) || 0
+            const receiptNo = String(row[4] || '').trim()
+            const allotDate = parseDate(row[5])
+            const remarks = String(row[6] || '').trim()
+
+            if (!hallNo || !seatNo) { errs.push(`Seats row ${i+2}: Hall No. and Seat No. required`); return }
+
+            seats.push({ hallNo, seatNo, memberNo, deposit, receiptNo, allotDate, remarks })
+          })
+        }
+
+        setErrors(errs)
+        setPreview({ lockers, seats })
+        setStep(2)
+      } catch (err) {
+        toast.error('Error reading file: ' + err.message)
+      }
+    }
+    reader.readAsBinaryString(f)
+  }
+
+  async function handleImport() {
+    if (!preview) return
+    setImporting(true)
+    let imported = 0
+    let skipped = 0
+    const errs = []
+
+    try {
+      // Fetch all members for member_no lookup
+      const { data: members } = await supabase.from('dcba_members')
+        .select('id, member_no').eq('org_id', org.id)
+      const memberMap = {}
+      members?.forEach(m => { memberMap[m.member_no] = m.id })
+
+      // Import Lockers
+      for (const l of preview.lockers) {
+        const itemNo = l.lockerNo
+        const memberId = l.memberNo ? memberMap[l.memberNo] : null
+
+        if (l.memberNo && !memberId) {
+          errs.push(`Locker ${itemNo}: Member ${l.memberNo} not found — skipped`)
+          skipped++
+          continue
+        }
+
+        const { error } = await supabase.from('dcba_locker_seats').upsert({
+          org_id: org.id,
+          item_type: 'locker',
+          item_no: itemNo,
+          status: memberId ? 'allotted' : 'vacant',
+          allotted_to: memberId || null,
+          allotment_date: l.allotDate || null,
+          security_deposit: l.deposit,
+          deposit_receipt_no: l.receiptNo || null,
+          deposit_paid_date: l.allotDate || null,
+          remarks: l.remarks || null,
+        }, { onConflict: 'org_id,item_type,item_no' })
+
+        if (error) { errs.push(`Locker ${itemNo}: ${error.message}`); skipped++ }
+        else {
+          imported++
+          // Update member profile
+          if (memberId) {
+            await supabase.from('dcba_members').update({ locker_no: itemNo }).eq('id', memberId)
+          }
+        }
+      }
+
+      // Import Seats
+      for (const s of preview.seats) {
+        const itemNo = `${s.hallNo.replace(/\s/g,'')}-${s.seatNo}`
+        const memberId = s.memberNo ? memberMap[s.memberNo] : null
+
+        if (s.memberNo && !memberId) {
+          errs.push(`Seat ${itemNo}: Member ${s.memberNo} not found — skipped`)
+          skipped++
+          continue
+        }
+
+        const { error } = await supabase.from('dcba_locker_seats').upsert({
+          org_id: org.id,
+          item_type: 'seat',
+          item_no: itemNo,
+          hall_no: s.hallNo,
+          seat_no: s.seatNo,
+          status: memberId ? 'allotted' : 'vacant',
+          allotted_to: memberId || null,
+          allotment_date: s.allotDate || null,
+          security_deposit: s.deposit,
+          deposit_receipt_no: s.receiptNo || null,
+          deposit_paid_date: s.allotDate || null,
+          remarks: s.remarks || null,
+        }, { onConflict: 'org_id,item_type,item_no' })
+
+        if (error) { errs.push(`Seat ${itemNo}: ${error.message}`); skipped++ }
+        else {
+          imported++
+          if (memberId) {
+            await supabase.from('dcba_members').update({ seat_no: s.seatNo, hall_no: s.hallNo }).eq('id', memberId)
+          }
+        }
+      }
+
+      setErrors(errs)
+      setStep(3)
+      toast.success(`Import complete! ${imported} imported, ${skipped} skipped`)
+    } catch (err) {
+      toast.error(err.message)
+    }
+    setImporting(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 text-blue-700" /> Bulk Import — Lockers & Seats
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+                <p className="font-semibold mb-2">Instructions:</p>
+                <ul className="space-y-1 text-xs">
+                  <li>• Download template first using the "Template" button</li>
+                  <li>• Fill in Lockers and/or Seats sheets</li>
+                  <li>• Member No. must match exactly with existing members</li>
+                  <li>• Leave Member No. blank for vacant lockers/seats</li>
+                  <li>• Existing records will be updated (upsert)</li>
+                </ul>
+              </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center">
+                <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600 font-medium mb-2">Upload filled Excel file</p>
+                <label className="btn-primary cursor-pointer inline-flex items-center gap-2">
+                  <Upload className="w-4 h-4" /> Choose File
+                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFile} />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && preview && (
+            <div className="space-y-4">
+              {/* Preview stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-700">{preview.lockers.length}</p>
+                  <p className="text-xs text-blue-600">Lockers to import</p>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-green-700">{preview.seats.length}</p>
+                  <p className="text-xs text-green-600">Seats to import</p>
+                </div>
+              </div>
+
+              {/* Errors */}
+              {errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                  <p className="text-sm font-semibold text-red-800 mb-2">⚠️ {errors.length} warning{errors.length > 1 ? 's' : ''}:</p>
+                  {errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+                </div>
+              )}
+
+              {/* Locker preview */}
+              {preview.lockers.length > 0 && (
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-2">🔒 Lockers Preview (first 5)</p>
+                  <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {['Locker No.','Member No.','Deposit','Receipt No.','Date'].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold text-gray-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.lockers.slice(0,5).map((l, i) => (
+                        <tr key={i} className={i%2===0?'bg-white':'bg-gray-50/50'}>
+                          <td className="px-3 py-1.5 font-mono font-bold text-blue-700">{l.lockerNo}</td>
+                          <td className="px-3 py-1.5">{l.memberNo || <span className="text-gray-400">Vacant</span>}</td>
+                          <td className="px-3 py-1.5">₹{l.deposit}</td>
+                          <td className="px-3 py-1.5 font-mono text-gray-500">{l.receiptNo || '—'}</td>
+                          <td className="px-3 py-1.5">{l.allotDate || '—'}</td>
+                        </tr>
+                      ))}
+                      {preview.lockers.length > 5 && (
+                        <tr><td colSpan={5} className="px-3 py-2 text-center text-gray-400 text-xs">... and {preview.lockers.length - 5} more</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Seat preview */}
+              {preview.seats.length > 0 && (
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-2">🪑 Seats Preview (first 5)</p>
+                  <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {['Hall','Seat No.','Member No.','Deposit','Receipt No.'].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold text-gray-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.seats.slice(0,5).map((s, i) => (
+                        <tr key={i} className={i%2===0?'bg-white':'bg-gray-50/50'}>
+                          <td className="px-3 py-1.5">{s.hallNo}</td>
+                          <td className="px-3 py-1.5 font-bold text-green-700">{s.seatNo}</td>
+                          <td className="px-3 py-1.5">{s.memberNo || <span className="text-gray-400">Vacant</span>}</td>
+                          <td className="px-3 py-1.5">₹{s.deposit}</td>
+                          <td className="px-3 py-1.5 font-mono text-gray-500">{s.receiptNo || '—'}</td>
+                        </tr>
+                      ))}
+                      {preview.seats.length > 5 && (
+                        <tr><td colSpan={5} className="px-3 py-2 text-center text-gray-400 text-xs">... and {preview.seats.length - 5} more</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="text-center py-8">
+              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Import Complete!</h3>
+              {errors.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mt-4 text-left">
+                  <p className="text-sm font-semibold text-yellow-800 mb-2">Skipped {errors.length} records:</p>
+                  {errors.map((e, i) => <p key={i} className="text-xs text-yellow-700">{e}</p>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t flex gap-3 justify-between">
+          <button onClick={onClose} className="btn-secondary">
+            {step === 3 ? 'Close' : 'Cancel'}
+          </button>
+          {step === 2 && (
+            <div className="flex gap-2">
+              <button onClick={() => { setStep(1); setPreview(null); setFile(null) }}
+                className="btn-secondary">← Back</button>
+              <button onClick={handleImport} disabled={importing || (preview?.lockers.length === 0 && preview?.seats.length === 0)}
+                className="btn-primary flex items-center gap-2">
+                {importing ? 'Importing...' : `Import ${(preview?.lockers.length || 0) + (preview?.seats.length || 0)} Records`}
+              </button>
+            </div>
+          )}
+          {step === 3 && (
+            <button onClick={onSuccess} className="btn-primary">✓ Done</button>
+          )}
         </div>
       </div>
     </div>

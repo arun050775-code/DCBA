@@ -50,6 +50,15 @@ function mapToHead(entry) {
     return result
   }
 
+  // Online payment — map by fee_type / items
+  if (entry.source === 'online') {
+    const items = (entry.items_collected || '').toLowerCase()
+    if (items.includes('annual') || items.includes('subscription')) { result.sub = amt; return result }
+    if (items.includes('icard') || items.includes('i-card')) { result.icard = amt; return result }
+    if (items.includes('admission')) { result.admi = amt; return result }
+    result.sub = amt; return result
+  }
+
   // Bounce reversal — skip or put in others
   if (desc.includes('bounce reversal')) {
     result.others = amt
@@ -119,6 +128,12 @@ function formatDate(d) {
 function isCash(e) {
   return (e.mode || '').toUpperCase() === 'CASH'
 }
+function isOnline(e) {
+  return (e.mode || '').toUpperCase() === 'ONLINE'
+}
+function isBank(e) {
+  return !isCash(e) && !isOnline(e)
+}
 
 export default function DayEndReport() {
   const { currentOrg, userRole } = useAuth()
@@ -186,7 +201,15 @@ export default function DayEndReport() {
         .gte('collection_date', startDate).lte('collection_date', endDate)
         .order('collection_date')
 
-      const [{ data: inc, error: e1 }, { data: rent }] = await Promise.all([q, qr])
+      // Online payments from dcba_member_fees
+      let qo = supabase.from('dcba_member_fees')
+        .select('*, dcba_members(member_name, member_no)')
+        .eq('org_id', currentOrg.id)
+        .eq('payment_mode', 'online')
+        .gte('payment_date', startDate).lte('payment_date', endDate)
+        .order('payment_date')
+
+      const [{ data: inc, error: e1 }, { data: rent }, { data: online }] = await Promise.all([q, qr, qo])
       if (e1) throw e1
 
       const combined = [
@@ -214,6 +237,19 @@ export default function DayEndReport() {
           items_collected: '',
           source: 'rent',
         })) : []),
+        // Online payments via Razorpay
+        ...(online || []).map(o => ({
+          date: o.payment_date,
+          receipt_no: o.receipt_no || '—',
+          party: o.dcba_members?.member_name || '—',
+          mode: 'ONLINE',
+          amount: Number(o.amount),
+          head: 'Member Fee',
+          description: o.description || `Annual Subscription — ${o.dcba_members?.member_name || ''} (${o.dcba_members?.member_no || ''})`,
+          remarks: `Razorpay: ${o.razorpay_payment_id || o.transaction_id || ''}`,
+          items_collected: o.fee_type === 'annual' ? 'Annual Subscription' : o.fee_type || '',
+          source: 'online',
+        })),
       ].sort((a, b) => a.date.localeCompare(b.date) || a.receipt_no.localeCompare(b.receipt_no))
 
       setEntries(combined)
@@ -230,7 +266,8 @@ export default function DayEndReport() {
 
   const totalAmount = filteredEntries.reduce((s, e) => s + e.amount, 0)
   const totalCash = filteredEntries.filter(isCash).reduce((s, e) => s + e.amount, 0)
-  const totalBank = filteredEntries.filter(e => !isCash(e)).reduce((s, e) => s + e.amount, 0)
+  const totalBank = filteredEntries.filter(isBank).reduce((s, e) => s + e.amount, 0)
+  const totalOnline = filteredEntries.filter(isOnline).reduce((s, e) => s + e.amount, 0)
 
   // Totals per head
   function headTotals(list) {
@@ -482,10 +519,11 @@ export default function DayEndReport() {
 
       {/* Summary */}
       {filteredEntries.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-4 gap-3 mb-4">
           <div className="rounded-xl border bg-green-50 p-3"><p className="text-xl font-bold text-green-700">₹{totalAmount.toLocaleString('en-IN')}</p><p className="text-xs text-green-600">Total</p></div>
           <div className="rounded-xl border bg-orange-50 p-3"><p className="text-xl font-bold text-orange-700">₹{totalCash.toLocaleString('en-IN')}</p><p className="text-xs text-orange-600">Cash</p></div>
           <div className="rounded-xl border bg-blue-50 p-3"><p className="text-xl font-bold text-blue-700">₹{totalBank.toLocaleString('en-IN')}</p><p className="text-xs text-blue-600">Bank/Cheque</p></div>
+          <div className="rounded-xl border bg-purple-50 p-3"><p className="text-xl font-bold text-purple-700">₹{totalOnline.toLocaleString('en-IN')}</p><p className="text-xs text-purple-600">Online (Razorpay)</p></div>
         </div>
       )}
 
@@ -536,11 +574,11 @@ export default function DayEndReport() {
                         {dayEntries.map((e, idx) => {
                           const m = mapToHead(e)
                           return (
-                            <tr key={`${e.receipt_no}-${idx}`} className={idx%2===0?'bg-white':'bg-gray-50/40'}>
+                            <tr key={`${e.receipt_no}-${idx}`} className={isOnline(e) ? 'bg-purple-50' : idx%2===0?'bg-white':'bg-gray-50/40'}>
                               <td className="table-cell text-center font-mono text-gray-600">{e.receipt_no}</td>
                               <td className="table-cell text-center whitespace-nowrap">{formatDate(e.date)}</td>
                               <td className="table-cell max-w-[160px] truncate font-medium">{e.party}</td>
-                              <td className="table-cell text-center font-bold">{isCash(e) ? 'C' : 'B'}</td>
+                              <td className="table-cell text-center font-bold">{isCash(e) ? 'C' : isOnline(e) ? <span className="text-purple-600">ONL</span> : 'B'}</td>
                               {HEADS.map(h => <td key={h.key} className="table-cell text-right">{m[h.key] > 0 ? m[h.key].toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>)}
                               <td className="table-cell text-right font-semibold text-green-700">{e.amount.toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
                               <td className="table-cell text-gray-600 max-w-[200px] truncate">{e.description}{e.remarks ? ` | ${e.remarks}` : ''}</td>
@@ -555,7 +593,9 @@ export default function DayEndReport() {
                         })}
                         <tr className="bg-blue-50 font-semibold">
                           <td colSpan={3} className="px-3 py-2 text-xs text-blue-800">
-                            Day Total : Cash : {dayCash.toLocaleString('en-IN', {minimumFractionDigits:2})} &nbsp;|&nbsp; Chq. : {dayBank.toLocaleString('en-IN', {minimumFractionDigits:2})}
+                            Day Total : Cash : {cashEntries.reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}
+                            &nbsp;|&nbsp; Chq. : {bankEntries.filter(e=>!isOnline(e)).reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}
+                            {dayEntries.filter(isOnline).length > 0 && <>&nbsp;|&nbsp; Online : {dayEntries.filter(isOnline).reduce((s,e)=>s+e.amount,0).toLocaleString('en-IN', {minimumFractionDigits:2})}</>}
                           </td>
                           <td className="px-3 py-2 text-center text-xs text-blue-600">C+B</td>
                           {HEADS.map(h => {
@@ -628,7 +668,9 @@ export default function DayEndReport() {
                       {view==='monthly' ? `TOTAL — ${MONTHS_FULL[filterMonth-1]} ${filterYear}` : `GRAND TOTAL — ${periodLabel}`}
                     </td>
                     <td className="px-3 py-3 text-center text-xs">
-                      C:{totalCash.toLocaleString('en-IN',{minimumFractionDigits:2})}<br/>B:{totalBank.toLocaleString('en-IN',{minimumFractionDigits:2})}
+                      C:{totalCash.toLocaleString('en-IN',{minimumFractionDigits:2})}<br/>
+                      B:{totalBank.toLocaleString('en-IN',{minimumFractionDigits:2})}<br/>
+                      {totalOnline > 0 && <>ONL:{totalOnline.toLocaleString('en-IN',{minimumFractionDigits:2})}</>}
                     </td>
                     {HEADS.map(h => {
                       const gt = headTotals(filteredEntries)

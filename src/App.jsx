@@ -23,6 +23,7 @@ import AuditLog from './components/AuditLog'
 import DayEndReport from './components/DayEndReport'
 import QuickReceipt from './components/QuickReceipt'
 import LockerSeatManagement from './components/LockerSeatManagement'
+import RazorpaySettlements from './components/RazorpaySettlements'
 
 function PrivateLayout() {
   const { user, loading, userRole } = useAuth()
@@ -69,6 +70,7 @@ function PrivateLayout() {
           <Route path="/audit-log" element={<AuditLog />} />
           <Route path="/cheques-in-hand" element={<ChequesInHand />} />
           <Route path="/locker-seats" element={<LockerSeatManagement />} />
+          <Route path="/razorpay-settlements" element={<RazorpaySettlements />} />
           <Route path="/settings" element={<ComingSoon title="Settings" />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

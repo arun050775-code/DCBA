@@ -798,7 +798,7 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
               <label className="label">Bank Account</label>
               <select className="input" value={form.bank_account_id}
                 onChange={e => setForm({ ...form, bank_account_id: e.target.value })}>
-                {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.account_name}</option>)}
+                {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.account_name} — {b.bank_name}</option>)}
               </select>
             </div>
           )}
@@ -821,10 +821,6 @@ function CollectFeeModal({ member, org, onClose, onSuccess }) {
                   <label className="label">Cheque Date</label>
                   <input type="date" className="input" value={form.cheque_date} onChange={e => setForm({...form, cheque_date: e.target.value})} />
                 </div>
-              </div>
-              <div>
-                <label className="label">Bank Name</label>
-                <input className="input" value={form.bank_name} onChange={e => setForm({...form, bank_name: e.target.value})} placeholder="e.g. SBI, HDFC" />
               </div>
               <p className="text-xs text-blue-600">⚠ Cheque will appear in Cheques in Hand until deposited.</p>
             </div>

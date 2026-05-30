@@ -9,8 +9,6 @@ const HEADS = [
   { key: 'cost_imposed',   label: 'Cost Imposed by Court',  reportHead: 'cost' },
   { key: 'library',        label: 'Library Fee',            reportHead: 'library' },
   { key: 'nomination',     label: 'Nomination Fee',         reportHead: 'nomn' },
-  { key: 'sd_seats',       label: 'Security Deposit - Seats', reportHead: 'sd_seats' },
-  { key: 'sd_locker',      label: 'Security Deposit - Locker', reportHead: 'sd_locker' },
   { key: 'vehicle_sticker',label: 'Vehicle Sticker',        reportHead: 'others' },
   { key: 'others',         label: 'Others',                 reportHead: 'others' },
 ]
@@ -362,7 +360,12 @@ function QuickReceiptModal({ org, userRole, onClose, onSuccess }) {
                 <label className="label">Payment Mode</label>
                 <div className="flex gap-2 flex-wrap">
                   {['cash','cheque','upi','neft'].map(m => (
-                    <button key={m} onClick={() => setForm({...form, mode: m})}
+                    <button key={m} onClick={() => {
+                      setForm({...form, mode: m})
+                      // Auto-select appropriate account
+                      if (m === 'cash' && cashAccounts.length > 0) setSelectedAccount(`cash:${cashAccounts[0].id}`)
+                      else if (m !== 'cash' && bankAccounts.length > 0) setSelectedAccount(`bank:${bankAccounts[0].id}`)
+                    }}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium border uppercase transition-colors ${form.mode === m ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-300'}`}>
                       {m}
                     </button>
@@ -397,16 +400,18 @@ function QuickReceiptModal({ org, userRole, onClose, onSuccess }) {
               )}
 
               {/* Account */}
+              {/* Account Selection */}
               <div>
                 <label className="label">Credit To *</label>
-                <select className="input" value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}>
-                  <optgroup label="Cash Accounts">
+                {form.mode === 'cash' ? (
+                  <select className="input" value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}>
                     {cashAccounts.map(c => <option key={c.id} value={`cash:${c.id}`}>Cash — {c.cashier_name}</option>)}
-                  </optgroup>
-                  <optgroup label="Bank Accounts">
+                  </select>
+                ) : (
+                  <select className="input" value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}>
                     {bankAccounts.map(b => <option key={b.id} value={`bank:${b.id}`}>{b.account_name} — {b.bank_name}</option>)}
-                  </optgroup>
-                </select>
+                  </select>
+                )}
               </div>
 
               {/* Remarks */}

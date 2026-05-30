@@ -35,6 +35,7 @@ export default function LockerSeatManagement() {
   const [showImport, setShowImport] = useState(false)
 
   const isCashier = ['admin', 'cashier', 'supervisor'].includes(userRole?.role)
+  const isAdmin = userRole?.role === 'admin'
 
   function downloadTemplate() {
     const wb = XLSX.utils.book_new()
@@ -140,7 +141,7 @@ export default function LockerSeatManagement() {
             className="btn-secondary flex items-center gap-2 text-sm">
             <Download className="w-4 h-4" /> Template
           </button>
-          {isCashier && (
+          {isAdmin && (
             <button onClick={() => setShowImport(true)}
               className="btn-secondary flex items-center gap-2 text-sm">
               <FileSpreadsheet className="w-4 h-4" /> Bulk Import

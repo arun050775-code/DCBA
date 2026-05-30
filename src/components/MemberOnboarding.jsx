@@ -329,10 +329,23 @@ export default function MemberOnboarding() {
 
             {/* Printable form */}
             <div id="application-form-print" className="card p-6">
-              <div className="text-center border-b-2 border-black pb-4 mb-4">
-                <h1 className="text-lg font-bold">DWARKA COURT BAR ASSOCIATION (REGD.)</h1>
-                <p className="text-xs">Dwarka Court Complex, Sector-10, New Delhi — 110075</p>
-                <h2 className="text-base font-bold mt-2 underline">APPLICATION FOR MEMBERSHIP</h2>
+              <div className="flex items-start justify-between border-b-2 border-black pb-4 mb-4">
+                <div className="text-center flex-1">
+                  <h1 className="text-lg font-bold">DWARKA COURT BAR ASSOCIATION (REGD.)</h1>
+                  <p className="text-xs">Dwarka Court Complex, Sector-10, New Delhi — 110075</p>
+                  <h2 className="text-base font-bold mt-2 underline">APPLICATION FOR MEMBERSHIP</h2>
+                  <p className="text-xs text-gray-500 mt-1">App. No: <strong>{applicationNo || 'DCBA/APP/----'}</strong></p>
+                </div>
+                {/* QR Code — aesthetic, encodes application number */}
+                <div className="flex-shrink-0 ml-4">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`DCBA Application: ${applicationNo || 'Pending'} | ${form.member_name} | Enrollment: ${form.enrollment_no}`)}&bgcolor=ffffff&color=1a3a5c&margin=2`}
+                    alt="QR Code"
+                    className="w-20 h-20 border border-gray-200 rounded"
+                    onError={e => { e.target.style.display = 'none' }}
+                  />
+                  <p className="text-center text-xs text-gray-400 mt-0.5">App. QR</p>
+                </div>
               </div>
 
               <table className="w-full text-xs mb-4" style={{ borderCollapse: 'collapse' }}>

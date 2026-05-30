@@ -10,12 +10,12 @@ const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin','cashier','supervisor','accountant','management'] },
   { path: '/members', label: 'Members', icon: Users, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/applications', label: 'Applications', icon: UserPlus, roles: ['admin','cashier','supervisor'] },
-  { path: '/grievances', label: 'Grievances', icon: AlertCircle, roles: ['admin','cashier','supervisor','management'] },
+  { path: '/grievances', label: 'Requests & Grievances', icon: AlertCircle, roles: ['admin','cashier','supervisor','management'] },
   { path: '/notices', label: 'Notice Board', icon: Bell, roles: ['admin','cashier','supervisor','accountant','management'] },
   { path: '/rent', label: 'Rent Tracker', icon: Building2, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/cash-bank', label: 'Cash & Bank', icon: IndianRupee, roles: ['admin','supervisor','accountant'] },
   { path: '/income', label: 'Income Register', icon: CreditCard, roles: ['admin','supervisor','accountant'] },
-  { path: '/day-end-report', label: 'Day End Report', icon: FileText, roles: ['admin','cashier','supervisor'] },
+  { path: '/day-end-report', label: 'Reports', icon: FileText, roles: ['admin','cashier','supervisor'] },
   { path: '/cheques-in-hand', label: 'Cheques in Hand', icon: Landmark, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/locker-seats', label: 'Locker & Seats', icon: Lock, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/razorpay-settlements', label: 'Online Settlements', icon: CreditCard, roles: ['admin','supervisor','accountant'] },
@@ -30,7 +30,7 @@ const NAV_ITEMS = [
 ]
 
 export default function Sidebar() {
-  const { userRole, signOut } = useAuth()
+  const { userRole, signOut, currentOrg } = useAuth()
   const navigate = useNavigate()
 
   const role = userRole?.role || 'cashier'
@@ -45,7 +45,7 @@ export default function Sidebar() {
             <Scale className="w-5 h-5 text-blue-800" />
           </div>
           <div>
-            <p className="text-white font-bold text-sm leading-tight">Bar Association</p>
+            <p className="text-white font-bold text-sm leading-tight">{currentOrg?.name || 'Bar Association'}</p>
             <p className="text-blue-300 text-xs">Accounting Suite</p>
           </div>
         </div>

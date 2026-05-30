@@ -874,7 +874,6 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
   const [editAllotments, setEditAllotments] = useState(false)
   const [allotments, setAllotments] = useState({
     chamber: member.chamber || '',
-    office: member.office || '',
     locker_no: member.locker_no || '',
     seat_no: member.seat_no || '',
     hall_no: member.hall_no || '',
@@ -887,7 +886,6 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
     try {
       const { error } = await supabase.from('dcba_members').update({
         chamber: allotments.chamber || null,
-        office: allotments.office || null,
         locker_no: allotments.locker_no || null,
         seat_no: allotments.seat_no || null,
         hall_no: allotments.hall_no || null,
@@ -1055,19 +1053,13 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
             {editAllotments ? (
               <div className="space-y-3">
                 <div>
-                  <label className="label text-xs">Chamber No. <span className="text-gray-400 font-normal">(Court allotted)</span></label>
+                  <label className="label text-xs">Chamber No.</label>
                   <input className="input text-sm" value={allotments.chamber}
                     onChange={e => setAllotments({ ...allotments, chamber: e.target.value })}
                     placeholder="e.g. 12A, Block B" />
                 </div>
                 <div>
-                  <label className="label text-xs">Office Address</label>
-                  <textarea className="input text-sm h-14 resize-none" value={allotments.office}
-                    onChange={e => setAllotments({ ...allotments, office: e.target.value })}
-                    placeholder="Office address" />
-                </div>
-                <div>
-                  <label className="label text-xs">Locker No. <span className="text-gray-400 font-normal">(DCBA allotted)</span></label>
+                  <label className="label text-xs">Locker No.</label>
                   <input className="input text-sm" value={allotments.locker_no}
                     onChange={e => setAllotments({ ...allotments, locker_no: e.target.value })}
                     placeholder="e.g. L-001" />
@@ -1100,7 +1092,6 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
               <div className="space-y-2">
                 {[
                   ['🏛️ Chamber', member.chamber || allotments.chamber || '—'],
-                  ['🏢 Office', member.office || allotments.office || '—'],
                   ['🔒 Locker', member.locker_no || allotments.locker_no || 'Not allotted'],
                   ['🪑 Seat', (member.seat_no || allotments.seat_no)
                     ? `${member.hall_no || allotments.hall_no || ''} · Seat ${member.seat_no || allotments.seat_no}`.trim()

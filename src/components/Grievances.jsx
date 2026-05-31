@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { AlertCircle, Plus, Search, Eye, CheckCircle, Clock, XCircle, MessageSquare, Wrench, Users, ClipboardList } from 'lucide-react'
+import { AlertCircle, Plus, Search, Eye, CheckCircle, Clock, XCircle, MessageSquare, Wrench, Users, ClipboardList, Printer } from 'lucide-react'
 
 const CATEGORIES = {
   infrastructure: {
@@ -115,6 +115,53 @@ export default function Grievances() {
     g.subject?.toLowerCase().includes(search.toLowerCase())
   )
 
+  const filteredEntries = filtered
+
+  function printGrievancesList() {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmt = (d) => {
+      if (!d) return '—'
+      const dt = new Date(d)
+      return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
+    }
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html><html><head><title>Grievances List</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
+      h2 { font-size: 14px; text-align: center; margin-bottom: 4px; }
+      p.sub { text-align: center; font-size: 9px; color: #555; margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #1a3a5c; color: white; padding: 5px 6px; text-align: left; font-size: 9px; }
+      td { padding: 4px 6px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 9px; }
+      @media print { @page { margin: 10mm; } }
+    </style></head><body>
+    <h2>${currentOrg?.name}</h2>
+    <p class="sub">Grievances List · ${filterStatus === 'all' ? 'All Status' : filterStatus} · ${filterCategory === 'all' ? 'All Categories' : filterCategory} · Printed: ${fmt(new Date())}</p>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Ticket No.</th><th>Date</th><th>Complainant</th><th>Category</th><th>Subject</th><th>Status</th><th>Remarks</th>
+      </tr></thead>
+      <tbody>
+        ${filtered.map((g, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td style="font-family:monospace">${g.ticket_no || '—'}</td>
+            <td>${fmt(g.created_at)}</td>
+            <td><strong>${g.complainant_name || '—'}</strong><br/>${g.complainant_member_no || ''}</td>
+            <td>${CATEGORIES[g.category]?.label || g.category || '—'}</td>
+            <td>${g.subject || '—'}</td>
+            <td>${g.status?.replace('_', ' ') || '—'}</td>
+            <td>${g.admin_remarks || '—'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <p style="text-align:right;font-size:8px;margin-top:8px">Total: ${filtered.length} grievances</p>
+    <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script>
+    </body></html>`)
+    win.document.close()
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -126,9 +173,15 @@ export default function Grievances() {
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
         </div>
         {mainTab === 'grievances' && (
-          <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> New Grievance
-          </button>
+          <div className="flex gap-2">
+            <button onClick={printGrievancesList} disabled={filteredEntries?.length === 0}
+              className="btn-secondary flex items-center gap-2 text-sm">
+              <Printer className="w-4 h-4" /> Print List
+            </button>
+            <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> New Grievance
+            </button>
+          </div>
         )}
       </div>
 
@@ -602,7 +655,6 @@ function AdminRequestsPanel({ org }) {
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [remarkModal, setRemarkModal] = useState(null)
 
   useEffect(() => { if (org) fetchRequests() }, [org, filterType, filterStatus])
 
@@ -612,10 +664,8 @@ function AdminRequestsPanel({ org }) {
       .select('*, dcba_members(member_name, member_no, mobile, email)')
       .eq('org_id', org.id)
       .order('created_at', { ascending: false })
-
     if (filterType !== 'all') q = q.eq('request_type', filterType)
     if (filterStatus !== 'all') q = q.eq('status', filterStatus)
-
     const { data } = await q
     setRequests(data || [])
     setLoading(false)
@@ -632,19 +682,136 @@ function AdminRequestsPanel({ org }) {
     fetchRequests()
   }
 
+  function printList() {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmt = (d) => {
+      if (!d) return '—'
+      const dt = new Date(d)
+      return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
+    }
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html><html><head><title>Member Requests</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
+      h2 { font-size: 14px; text-align: center; margin-bottom: 4px; }
+      p.sub { text-align: center; font-size: 9px; color: #555; margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #1a3a5c; color: white; padding: 5px 6px; text-align: left; font-size: 9px; }
+      td { padding: 4px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+      .essay { font-size: 8px; color: #444; margin-top: 3px; font-style: italic; }
+      @media print { @page { margin: 10mm; } }
+    </style></head><body>
+    <h2>${org.name}</h2>
+    <p class="sub">Member Requests — ${filterType === 'all' ? 'All Types' : REQUEST_TYPES[filterType]?.label} · ${filterStatus === 'all' ? 'All Status' : filterStatus} · Printed: ${fmt(new Date())}</p>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Req. No.</th><th>Date</th><th>Member</th><th>Type</th><th>Details</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${requests.map((r, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td style="font-family:monospace">${r.request_no || '—'}</td>
+            <td>${fmt(r.request_date)}</td>
+            <td><strong>${r.dcba_members?.member_name || '—'}</strong><br/>${r.dcba_members?.member_no || ''}<br/>${r.dcba_members?.mobile || ''}</td>
+            <td>${REQUEST_TYPES[r.request_type]?.label || r.request_type}</td>
+            <td>${
+              r.request_type === 'experience_letter' ? `Purpose: ${r.el_purpose || '—'}` :
+              r.request_type === 'icard' ? `Fee ₹${r.icard_fee_amount} · ${r.icard_fee_paid ? 'Paid' : 'Not paid'}` :
+              (r.request_type === 'seat_allotment' || r.request_type === 'locker_allotment') && r.preferred_location
+                ? `<div class="essay">${r.preferred_location.slice(0, 300)}${r.preferred_location.length > 300 ? '...' : ''}</div>`
+                : '—'
+            }</td>
+            <td>${r.status}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <p style="text-align:right;font-size:8px;margin-top:8px">Total: ${requests.length} requests</p>
+    <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script>
+    </body></html>`)
+    win.document.close()
+  }
+
+  function printSingleRequest(r) {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmt = (d) => {
+      if (!d) return '—'
+      const dt = new Date(d)
+      return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
+    }
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html><html><head><title>Request ${r.request_no}</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 11px; margin: 30px; }
+      h2 { font-size: 15px; text-align: center; }
+      .org { text-align: center; font-size: 10px; color: #555; margin-bottom: 20px; }
+      .field { margin-bottom: 10px; }
+      .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+      .value { font-size: 11px; font-weight: bold; margin-top: 2px; }
+      .essay-box { border: 1px solid #ccc; padding: 12px; margin-top: 6px; font-size: 11px; line-height: 1.7; min-height: 120px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+      hr { border: 1px solid #ddd; margin: 16px 0; }
+      .footer { margin-top: 40px; display: flex; justify-content: space-between; }
+      .sign { text-align: center; border-top: 1px solid #000; padding-top: 4px; width: 150px; font-size: 9px; }
+      @media print { @page { margin: 15mm; } }
+    </style></head><body>
+    <h2>${org.name}</h2>
+    <p class="org">Member Request — ${REQUEST_TYPES[r.request_type]?.label || r.request_type}</p>
+    <hr/>
+    <div class="grid">
+      <div class="field"><div class="label">Request No.</div><div class="value" style="font-family:monospace">${r.request_no || '—'}</div></div>
+      <div class="field"><div class="label">Date</div><div class="value">${fmt(r.request_date)}</div></div>
+      <div class="field"><div class="label">Member Name</div><div class="value">${r.dcba_members?.member_name || '—'}</div></div>
+      <div class="field"><div class="label">Member No.</div><div class="value">${r.dcba_members?.member_no || '—'}</div></div>
+      <div class="field"><div class="label">Mobile</div><div class="value">${r.dcba_members?.mobile || '—'}</div></div>
+      <div class="field"><div class="label">Request Type</div><div class="value">${REQUEST_TYPES[r.request_type]?.label || r.request_type}</div></div>
+      <div class="field"><div class="label">Status</div><div class="value">${r.status}</div></div>
+    </div>
+    ${r.request_type === 'experience_letter' ? `
+      <div class="field"><div class="label">Purpose</div><div class="value">${r.el_purpose || '—'}</div></div>
+    ` : ''}
+    ${r.request_type === 'icard' ? `
+      <div class="field"><div class="label">I-Card Fee</div><div class="value">₹${r.icard_fee_amount} — ${r.icard_fee_paid ? 'PAID' : 'NOT PAID'}</div></div>
+      ${r.icard_transaction_ref ? `<div class="field"><div class="label">Payment Ref</div><div class="value">${r.icard_transaction_ref}</div></div>` : ''}
+    ` : ''}
+    ${(r.request_type === 'seat_allotment' || r.request_type === 'locker_allotment') && r.preferred_location ? `
+      <div class="field">
+        <div class="label">Application / Justification (${r.preferred_location.trim().split(/\\s+/).filter(Boolean).length} words)</div>
+        <div class="essay-box">${r.preferred_location}</div>
+      </div>
+    ` : ''}
+    ${r.admin_remarks ? `
+      <div class="field"><div class="label">Admin Remarks</div><div class="value">${r.admin_remarks}</div></div>
+    ` : ''}
+    <div class="footer">
+      <div class="sign">Secretary / Admin</div>
+      <div class="sign">Member Signature</div>
+    </div>
+    <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script>
+    </body></html>`)
+    win.document.close()
+  }
+
   return (
     <div>
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
-        {['pending','approved','rejected','completed'].map(s => {
-          const cnt = requests.filter(r => r.status === s).length
-          return (
-            <div key={s} className={`rounded-xl border p-3 ${REQ_STATUS[s]?.color} border-current/20`}>
-              <p className="text-2xl font-bold">{cnt}</p>
-              <p className="text-xs font-semibold opacity-80">{REQ_STATUS[s]?.label}</p>
-            </div>
-          )
-        })}
+      {/* Stats + Print List */}
+      <div className="flex items-start justify-between mb-6 gap-4">
+        <div className="grid grid-cols-4 gap-3 flex-1">
+          {['pending','approved','rejected','completed'].map(s => {
+            const cnt = requests.filter(r => r.status === s).length
+            return (
+              <div key={s} className={`rounded-xl border p-3 ${REQ_STATUS[s]?.color} border-current/20`}>
+                <p className="text-2xl font-bold">{cnt}</p>
+                <p className="text-xs font-semibold opacity-80">{REQ_STATUS[s]?.label}</p>
+              </div>
+            )
+          })}
+        </div>
+        <button onClick={printList} disabled={requests.length === 0}
+          className="btn-secondary flex items-center gap-2 text-sm flex-shrink-0">
+          <Printer className="w-4 h-4" /> Print List
+        </button>
       </div>
 
       {/* Filters */}
@@ -712,7 +879,11 @@ function AdminRequestsPanel({ org }) {
                     </p>
                   )}
                   {(r.request_type === 'seat_allotment' || r.request_type === 'locker_allotment') && r.preferred_location && (
-                    <p className="text-xs text-green-700 mt-1 bg-green-50 rounded px-2 py-1">Preference: {r.preferred_location}</p>
+                    <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                      <p className="text-xs text-gray-400 font-medium mb-1">Application:</p>
+                      <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-4">{r.preferred_location}</p>
+                      <p className="text-xs text-gray-400 mt-1">{r.preferred_location.trim().split(/\s+/).filter(Boolean).length} words</p>
+                    </div>
                   )}
                   {r.admin_remarks && (
                     <p className="text-xs text-gray-500 mt-1 italic">Remark: {r.admin_remarks}</p>
@@ -720,28 +891,34 @@ function AdminRequestsPanel({ org }) {
                 </div>
 
                 {/* Actions */}
-                {r.status === 'pending' && (
-                  <div className="flex flex-col gap-1.5 flex-shrink-0">
-                    <button onClick={() => updateStatus(r.id, 'approved')}
-                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg font-semibold whitespace-nowrap">
-                      ✓ Approve
-                    </button>
+                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                  <button onClick={() => printSingleRequest(r)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs rounded-lg font-semibold whitespace-nowrap flex items-center gap-1">
+                    <Printer className="w-3 h-3" /> Print
+                  </button>
+                  {r.status === 'pending' && (
+                    <>
+                      <button onClick={() => updateStatus(r.id, 'approved')}
+                        className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg font-semibold whitespace-nowrap">
+                        ✓ Approve
+                      </button>
+                      <button onClick={() => updateStatus(r.id, 'completed')}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-semibold whitespace-nowrap">
+                        ✓✓ Complete
+                      </button>
+                      <button onClick={() => updateStatus(r.id, 'rejected')}
+                        className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg font-semibold whitespace-nowrap">
+                        ✕ Reject
+                      </button>
+                    </>
+                  )}
+                  {r.status === 'approved' && (
                     <button onClick={() => updateStatus(r.id, 'completed')}
                       className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-semibold whitespace-nowrap">
-                      ✓✓ Complete
+                      Mark Complete
                     </button>
-                    <button onClick={() => updateStatus(r.id, 'rejected')}
-                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg font-semibold whitespace-nowrap">
-                      ✕ Reject
-                    </button>
-                  </div>
-                )}
-                {r.status === 'approved' && (
-                  <button onClick={() => updateStatus(r.id, 'completed')}
-                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg font-semibold flex-shrink-0">
-                    Mark Complete
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )

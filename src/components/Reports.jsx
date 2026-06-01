@@ -12,6 +12,13 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = [CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
 
+function extractDescAmount(desc, keyword) {
+  if (!desc) return 0
+  const regex = new RegExp(keyword + '[^₹]*₹([\\d,]+)', 'i')
+  const m = desc.match(regex)
+  return m ? parseInt(m[1].replace(',', '')) : 0
+}
+
 export default function Reports() {
   const { currentOrg, userRole } = useAuth()
   const [activeReport, setActiveReport] = useState('ie')
@@ -113,12 +120,58 @@ export default function Reports() {
       incomeMap[head].total += Number(f.amount)
     })
 
-    // Other income entries (Quick Receipt etc.)
+    // Other income entries (Quick Receipt etc.) — use head_id or description
     ;(income || []).forEach(e => {
-      const head = e.account_heads?.name || 'Miscellaneous Income'
+      let head = e.account_heads?.name
+
+      // If no head assigned — auto-map from description
+      if (!head) {
+        const desc = (e.description || '').toLowerCase()
+        if (desc.includes('admission fee')) head = 'Admission Fee'
+        else if (desc.includes('annual subscription') || desc.includes('subscription')) head = 'Annual Subscription'
+        else if (desc.includes('i-card') || desc.includes('i card') || desc.includes('icard')) head = 'I-Card Fee'
+        else if (desc.includes('nomination')) head = 'Nomination Fee'
+        else if (desc.includes('library')) head = 'Library Income'
+        else if (desc.includes('welfare stamp')) head = 'Welfare Stamps Sale'
+        else if (desc.includes('cost imposed') || desc.includes('cost/misc')) head = 'Cost Imposed By Courts'
+        else if (desc.includes('vehicle sticker')) head = 'Vehicle Stickers'
+        else if (desc.includes('donation')) head = 'Donations'
+        else if (desc.includes('membership fees')) {
+          // Mixed admission + subscription — split
+          const admAmt = extractDescAmount(e.description, 'Admission Fee')
+          const subAmt = extractDescAmount(e.description, 'Annual Subscription')
+          const icardAmt = extractDescAmount(e.description, 'I.Card') || extractDescAmount(e.description, 'I-Card')
+          if (admAmt > 0) {
+            if (!incomeMap['Admission Fee']) incomeMap['Admission Fee'] = { total: 0, subs: {} }
+            incomeMap['Admission Fee'].subs['Cash/Cheque'] = (incomeMap['Admission Fee'].subs['Cash/Cheque'] || 0) + admAmt
+            incomeMap['Admission Fee'].total += admAmt
+          }
+          if (subAmt > 0) {
+            if (!incomeMap['Annual Subscription']) incomeMap['Annual Subscription'] = { total: 0, subs: {} }
+            incomeMap['Annual Subscription'].subs['Cash/Cheque'] = (incomeMap['Annual Subscription'].subs['Cash/Cheque'] || 0) + subAmt
+            incomeMap['Annual Subscription'].total += subAmt
+          }
+          if (icardAmt > 0) {
+            if (!incomeMap['I-Card Fee']) incomeMap['I-Card Fee'] = { total: 0, subs: {} }
+            incomeMap['I-Card Fee'].subs['Cash/Cheque'] = (incomeMap['I-Card Fee'].subs['Cash/Cheque'] || 0) + icardAmt
+            incomeMap['I-Card Fee'].total += icardAmt
+          }
+          // Remaining unallocated
+          const allocated = admAmt + subAmt + icardAmt
+          if (allocated < Number(e.amount)) {
+            const rem = Number(e.amount) - allocated
+            if (!incomeMap['Annual Subscription']) incomeMap['Annual Subscription'] = { total: 0, subs: {} }
+            incomeMap['Annual Subscription'].subs['Cash/Cheque'] = (incomeMap['Annual Subscription'].subs['Cash/Cheque'] || 0) + rem
+            incomeMap['Annual Subscription'].total += rem
+          }
+          return // already handled above
+        }
+        else head = 'Miscellaneous Income'
+      }
+
       const sub = e.account_sub_heads?.name || null
       if (!incomeMap[head]) incomeMap[head] = { total: 0, subs: {} }
-      const subKey = sub || head
+      const subKey = sub || 'Cash/Cheque'
       incomeMap[head].subs[subKey] = (incomeMap[head].subs[subKey] || 0) + Number(e.amount)
       incomeMap[head].total += Number(e.amount)
     })

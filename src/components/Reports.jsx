@@ -78,10 +78,11 @@ export default function Reports() {
   async function fetchIEReport(range) {
     const { startDate, endDate, label } = range
 
-    const [{ data: rent }, { data: income }, { data: expenditure }] = await Promise.all([
+    const [{ data: rent }, { data: income }, { data: expenditure }, { data: memberFees }] = await Promise.all([
       supabase.from('rent_collections').select('amount, vendors(vendor_categories(name))').eq('org_id', currentOrg.id).gte('collection_date', startDate).lte('collection_date', endDate),
       supabase.from('income_entries').select('amount, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate),
-      supabase.from('expenditure_entries').select('amount, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate),
+      supabase.from('expenditure_entries').select('amount, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate).eq('is_posted', true),
+      supabase.from('dcba_member_fees').select('amount, fee_type, payment_mode').eq('org_id', currentOrg.id).gte('payment_date', startDate).lte('payment_date', endDate),
     ])
 
     // Build income summary
@@ -94,26 +95,42 @@ export default function Reports() {
       rentByCat[cat] = (rentByCat[cat] || 0) + Number(r.amount)
     })
     if (Object.keys(rentByCat).length > 0) {
-      incomeMap['Vendor Rent Income'] = { total: 0, subs: rentByCat }
-      incomeMap['Vendor Rent Income'].total = Object.values(rentByCat).reduce((a, b) => a + b, 0)
+      incomeMap['Rental Income'] = { total: 0, subs: rentByCat }
+      incomeMap['Rental Income'].total = Object.values(rentByCat).reduce((a, b) => a + b, 0)
     }
 
-    // Other income
+    // Member fees — map to head names
+    const feeTypeToHead = {
+      annual: 'Annual Subscription',
+      admission: 'Admission Fee',
+      icard: 'I-Card Fee',
+    }
+    ;(memberFees || []).forEach(f => {
+      const head = feeTypeToHead[f.fee_type] || 'Others'
+      if (!incomeMap[head]) incomeMap[head] = { total: 0, subs: {} }
+      const modeLabel = f.payment_mode === 'online' ? 'Online' : f.payment_mode === 'cash' ? 'Cash' : f.payment_mode?.toUpperCase() || 'Other'
+      incomeMap[head].subs[modeLabel] = (incomeMap[head].subs[modeLabel] || 0) + Number(f.amount)
+      incomeMap[head].total += Number(f.amount)
+    })
+
+    // Other income entries (Quick Receipt etc.)
     ;(income || []).forEach(e => {
       const head = e.account_heads?.name || 'Miscellaneous Income'
-      const sub = e.account_sub_heads?.name || head
+      const sub = e.account_sub_heads?.name || null
       if (!incomeMap[head]) incomeMap[head] = { total: 0, subs: {} }
-      incomeMap[head].subs[sub] = (incomeMap[head].subs[sub] || 0) + Number(e.amount)
+      const subKey = sub || head
+      incomeMap[head].subs[subKey] = (incomeMap[head].subs[subKey] || 0) + Number(e.amount)
       incomeMap[head].total += Number(e.amount)
     })
 
-    // Build expenditure summary
+    // Build expenditure summary — only posted entries
     const expMap = {}
     ;(expenditure || []).forEach(e => {
       const head = e.account_heads?.name || 'Miscellaneous Expenditure'
-      const sub = e.account_sub_heads?.name || head
+      const sub = e.account_sub_heads?.name || null
       if (!expMap[head]) expMap[head] = { total: 0, subs: {} }
-      expMap[head].subs[sub] = (expMap[head].subs[sub] || 0) + Number(e.amount)
+      const subKey = sub || head
+      expMap[head].subs[subKey] = (expMap[head].subs[subKey] || 0) + Number(e.amount)
       expMap[head].total += Number(e.amount)
     })
 

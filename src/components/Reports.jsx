@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 import {
   FileText, Download, Printer, TrendingUp, TrendingDown,
   Building2, IndianRupee, Calendar, ChevronDown, Mail,
@@ -499,19 +500,51 @@ export default function Reports() {
     win.document.write(`<!DOCTYPE html><html><head>
       <title>Report - ${currentOrg?.name}</title>
       <style>
-        @page { margin: 15mm; size: A4; }
-        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
+        @page { margin: 12mm; size: A4 portrait; }
+        body { font-family: Arial, sans-serif; font-size: 10px; color: #000; }
         h1 { font-size: 14px; text-align: center; margin-bottom: 4px; }
-        h2 { font-size: 12px; text-align: center; margin-bottom: 12px; color: #333; }
+        h2 { font-size: 11px; text-align: center; margin-bottom: 12px; color: #333; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        th { background: #1e3a8a; color: white; padding: 6px 8px; text-align: left; font-size: 10px; }
-        td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+        th { background: #1e3a8a; color: white; padding: 5px 7px; text-align: left; font-size: 9px; }
+        td { padding: 4px 7px; border-bottom: 1px solid #e5e7eb; font-size: 9.5px; }
         .total-row { font-weight: bold; background: #f3f4f6; }
-        .surplus { color: green; font-weight: bold; }
-        .deficit { color: red; font-weight: bold; }
-        .section-title { font-weight: bold; font-size: 11px; background: #dbeafe; padding: 4px 8px; margin-top: 8px; }
         .text-right { text-align: right; }
-        @media print { body { -webkit-print-color-adjust: exact; } }
+        /* I&E two column layout */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden; }
+        .border-r { border-right: 1px solid #d1d5db; }
+        .border-b { border-bottom: 1px solid #d1d5db; }
+        .no-print { display: none !important; }
+        .bg-red-800 { background: #991b1b !important; }
+        .bg-green-800 { background: #166534 !important; }
+        .bg-red-50 { background: #fef2f2 !important; }
+        .bg-green-50 { background: #f0fdf4 !important; }
+        .bg-red-100 { background: #fee2e2 !important; }
+        .bg-green-100 { background: #dcfce7 !important; }
+        .bg-gray-50 { background: #f9fafb !important; }
+        .bg-gray-800 { background: #1f2937 !important; }
+        .text-white { color: white !important; }
+        .text-red-800 { color: #991b1b !important; }
+        .text-green-800 { color: #166534 !important; }
+        .px-4 { padding-left: 12px; padding-right: 12px; }
+        .px-6 { padding-left: 18px; padding-right: 18px; }
+        .py-1 { padding-top: 3px; padding-bottom: 3px; }
+        .py-1\\.5 { padding-top: 5px; padding-bottom: 5px; }
+        .py-2 { padding-top: 6px; padding-bottom: 6px; }
+        .py-3 { padding-top: 10px; padding-bottom: 10px; }
+        .flex { display: flex; }
+        .justify-between { justify-content: space-between; }
+        .text-sm { font-size: 10px; }
+        .text-xs { font-size: 9px; }
+        .text-base { font-size: 11px; }
+        .font-bold { font-weight: bold; }
+        .font-semibold { font-weight: 600; }
+        .font-medium { font-weight: 500; }
+        .text-center { text-align: center; }
+        .text-gray-600 { color: #4b5563; }
+        .border-t-2 { border-top: 2px solid; }
+        .border-red-300 { border-color: #fca5a5; }
+        .border-green-300 { border-color: #86efac; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
       </style>
     </head><body>${content}
     <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script>
@@ -664,67 +697,155 @@ export default function Reports() {
 
 function IEReport({ data, orgName, fmt }) {
   const { incomeMap, expMap, totalIncome, totalExp, surplus, label } = data
+
+  function handleExcelIE() {
+    const wb = XLSX.utils.book_new()
+    const rows = [
+      [`${orgName}`],
+      [`Income & Expenditure Account — ${label}`],
+      [],
+      ['EXPENDITURE', '', '', 'INCOME', ''],
+      ['Head / Sub Head', 'Amount (₹)', '', 'Head / Sub Head', 'Amount (₹)'],
+    ]
+
+    const expEntries = Object.entries(expMap)
+    const incEntries = Object.entries(incomeMap)
+    const maxRows = Math.max(expEntries.length, incEntries.length)
+
+    // Sub rows
+    const expRows = []
+    expEntries.forEach(([head, d]) => {
+      expRows.push([`  ${head}`, '', '', '', ''])
+      Object.entries(d.subs).forEach(([sub, amt]) => {
+        expRows.push([`    ${sub}`, amt, '', '', ''])
+      })
+      expRows.push([`  Total ${head}`, d.total, '', '', ''])
+      expRows.push(['', '', '', '', ''])
+    })
+
+    const incRows = []
+    incEntries.forEach(([head, d]) => {
+      incRows.push(['', '', '', `  ${head}`, ''])
+      Object.entries(d.subs).forEach(([sub, amt]) => {
+        incRows.push(['', '', '', `    ${sub}`, amt])
+      })
+      incRows.push(['', '', '', `  Total ${head}`, d.total])
+      incRows.push(['', '', '', '', ''])
+    })
+
+    const maxR = Math.max(expRows.length, incRows.length)
+    for (let i = 0; i < maxR; i++) {
+      const eRow = expRows[i] || ['', '', '', '', '']
+      const iRow = incRows[i] || ['', '', '', '', '']
+      rows.push([eRow[0], eRow[1], '', iRow[3], iRow[4]])
+    }
+
+    rows.push([])
+    rows.push(['TOTAL EXPENDITURE', totalExp, '', 'TOTAL INCOME', totalIncome])
+    rows.push([surplus >= 0 ? 'NET SURPLUS' : 'NET DEFICIT', Math.abs(surplus), '', '', ''])
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 40 }, { wch: 15 }, { wch: 3 }, { wch: 40 }, { wch: 15 }]
+    XLSX.utils.book_append_sheet(wb, ws, 'I&E Account')
+    XLSX.writeFile(wb, `IE_Account_${label.replace(/\s/g, '_')}.xlsx`)
+  }
+
   return (
-    <div className="card">
-      <h1 className="text-center text-xl font-bold text-gray-800 mb-1">{orgName}</h1>
-      <h2 className="text-center text-base font-semibold text-gray-600 mb-4">
-        Income & Expenditure Account — {label}
-      </h2>
-      <div className="grid grid-cols-2 gap-0 border border-gray-200 rounded-lg overflow-hidden">
-        {/* INCOME SIDE */}
-        <div className="border-r border-gray-200">
-          <div className="bg-green-800 text-white px-4 py-2 text-sm font-bold">INCOME</div>
-          {Object.entries(incomeMap).map(([head, data]) => (
-            <div key={head}>
-              <div className="px-4 py-1.5 bg-green-50 text-sm font-semibold text-green-800 border-b border-green-100">
-                {head}
-              </div>
-              {Object.entries(data.subs).map(([sub, amt]) => (
-                <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50">
-                  <span className="text-gray-600">{sub}</span>
-                  <span className="font-medium">{fmt(amt)}</span>
+    <div>
+      {/* Action buttons */}
+      <div className="flex justify-end gap-2 mb-4 no-print">
+        <button onClick={handleExcelIE}
+          className="btn-secondary flex items-center gap-2 text-sm">
+          <Download className="w-4 h-4" /> Export Excel
+        </button>
+      </div>
+
+      <div className="card" id="ie-print-content">
+        <div className="text-center mb-4">
+          <h1 className="text-xl font-bold text-gray-800">{orgName}</h1>
+          <h2 className="text-base font-semibold text-gray-600 mt-1">
+            Income & Expenditure Account — {label}
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-0 border border-gray-200 rounded-lg overflow-hidden">
+
+          {/* EXPENDITURE SIDE — Left */}
+          <div className="border-r border-gray-200">
+            <div className="bg-red-800 text-white px-4 py-2 text-sm font-bold text-center">EXPENDITURE</div>
+            {Object.entries(expMap).map(([head, d]) => (
+              <div key={head}>
+                <div className="px-4 py-1.5 bg-red-50 text-sm font-semibold text-red-800 border-b border-red-100">
+                  {head}
                 </div>
-              ))}
-              <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200">
-                <span>Total {head}</span>
-                <span>{fmt(data.total)}</span>
+                {Object.entries(d.subs).map(([sub, amt]) => (
+                  <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50">
+                    <span className="text-gray-600">{sub}</span>
+                    <span className="font-medium">{fmt(amt)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200">
+                  <span>Total {head}</span>
+                  <span>{fmt(d.total)}</span>
+                </div>
               </div>
+            ))}
+            <div className="flex justify-between px-4 py-3 text-base font-bold bg-red-100 border-t-2 border-red-300">
+              <span>TOTAL EXPENDITURE</span>
+              <span className="text-red-800">{fmt(totalExp)}</span>
             </div>
-          ))}
-          <div className="flex justify-between px-4 py-3 text-base font-bold bg-green-100 border-t-2 border-green-300">
-            <span>TOTAL INCOME</span>
-            <span className="text-green-800">{fmt(totalIncome)}</span>
+            {/* Surplus on expenditure side */}
+            {surplus >= 0 && (
+              <div className="flex justify-between px-4 py-2 text-sm font-bold bg-green-50 border-t border-green-300 text-green-800">
+                <span>Surplus for the period</span>
+                <span>{fmt(surplus)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* INCOME SIDE — Right */}
+          <div>
+            <div className="bg-green-800 text-white px-4 py-2 text-sm font-bold text-center">INCOME</div>
+            {Object.entries(incomeMap).map(([head, d]) => (
+              <div key={head}>
+                <div className="px-4 py-1.5 bg-green-50 text-sm font-semibold text-green-800 border-b border-green-100">
+                  {head}
+                </div>
+                {Object.entries(d.subs).map(([sub, amt]) => (
+                  <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50">
+                    <span className="text-gray-600">{sub}</span>
+                    <span className="font-medium">{fmt(amt)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200">
+                  <span>Total {head}</span>
+                  <span>{fmt(d.total)}</span>
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-between px-4 py-3 text-base font-bold bg-green-100 border-t-2 border-green-300">
+              <span>TOTAL INCOME</span>
+              <span className="text-green-800">{fmt(totalIncome)}</span>
+            </div>
+            {/* Deficit on income side */}
+            {surplus < 0 && (
+              <div className="flex justify-between px-4 py-2 text-sm font-bold bg-red-50 border-t border-red-300 text-red-800">
+                <span>Deficit for the period</span>
+                <span>{fmt(Math.abs(surplus))}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* EXPENDITURE SIDE */}
-        <div>
-          <div className="bg-red-800 text-white px-4 py-2 text-sm font-bold">EXPENDITURE</div>
-          {Object.entries(expMap).map(([head, data]) => (
-            <div key={head}>
-              <div className="px-4 py-1.5 bg-red-50 text-sm font-semibold text-red-800 border-b border-red-100">
-                {head}
-              </div>
-              {Object.entries(data.subs).map(([sub, amt]) => (
-                <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50">
-                  <span className="text-gray-600">{sub}</span>
-                  <span className="font-medium">{fmt(amt)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200">
-                <span>Total {head}</span>
-                <span>{fmt(data.total)}</span>
-              </div>
-            </div>
-          ))}
-          <div className="flex justify-between px-4 py-3 text-base font-bold bg-red-100 border-t-2 border-red-300">
-            <span>TOTAL EXPENDITURE</span>
-            <span className="text-red-800">{fmt(totalExp)}</span>
+        {/* Balance check */}
+        <div className="grid grid-cols-2 gap-0 border border-gray-200 rounded-lg overflow-hidden mt-0">
+          <div className="flex justify-between px-4 py-2 text-sm font-bold bg-gray-800 text-white">
+            <span>{surplus >= 0 ? `Total (Exp + Surplus)` : 'TOTAL EXPENDITURE'}</span>
+            <span>{fmt(surplus >= 0 ? totalExp + surplus : totalExp)}</span>
           </div>
-          {/* Surplus/Deficit */}
-          <div className={`flex justify-between px-4 py-3 text-base font-bold border-t-2 ${surplus >= 0 ? 'bg-green-50 border-green-400 text-green-800' : 'bg-red-50 border-red-400 text-red-800'}`}>
-            <span>{surplus >= 0 ? 'NET SURPLUS' : 'NET DEFICIT'}</span>
-            <span>{fmt(Math.abs(surplus))}</span>
+          <div className="flex justify-between px-4 py-2 text-sm font-bold bg-gray-800 text-white">
+            <span>TOTAL INCOME</span>
+            <span>{fmt(totalIncome)}</span>
           </div>
         </div>
       </div>

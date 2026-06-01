@@ -293,8 +293,8 @@ function PostEntryModal({ entry, heads, subHeads, onClose, onSuccess }) {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const { error } = await supabase.from('expenditure_entries').update({
-        account_head_id: form.head_id,
-        account_sub_head_id: form.sub_head_id || null,
+        head_id: form.head_id,
+        sub_head_id: form.sub_head_id || null,
         is_posted: true,
         posted_by: session?.user?.id,
         posted_at: new Date().toISOString(),

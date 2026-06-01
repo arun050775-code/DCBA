@@ -5,12 +5,12 @@ import toast from 'react-hot-toast'
 import { Receipt, X, Printer, IndianRupee, Plus } from 'lucide-react'
 
 const HEADS = [
-  { key: 'welfare_stamp',  label: 'Welfare Stamp',          reportHead: 'cost' },
-  { key: 'cost_imposed',   label: 'Cost Imposed by Court',  reportHead: 'cost' },
-  { key: 'library',        label: 'Library Fee',            reportHead: 'library' },
-  { key: 'nomination',     label: 'Nomination Fee',         reportHead: 'nomn' },
-  { key: 'vehicle_sticker',label: 'Vehicle Sticker',        reportHead: 'others' },
-  { key: 'others',         label: 'Others',                 reportHead: 'others' },
+  { key: 'welfare_stamp',  label: 'Welfare Stamp',          reportHead: 'cost',    headName: 'Welfare Stamps Sale' },
+  { key: 'cost_imposed',   label: 'Cost Imposed by Court',  reportHead: 'cost',    headName: 'Cost Imposed By Courts' },
+  { key: 'library',        label: 'Library Fee',            reportHead: 'library', headName: 'Library Income' },
+  { key: 'nomination',     label: 'Nomination Fee',         reportHead: 'nomn',    headName: 'Nomination Fee' },
+  { key: 'vehicle_sticker',label: 'Vehicle Sticker',        reportHead: 'others',  headName: 'Vehicle Stickers' },
+  { key: 'others',         label: 'Others',                 reportHead: 'others',  headName: 'Others' },
 ]
 
 function numberToWords(num) {
@@ -153,13 +153,21 @@ function QuickReceiptModal({ org, userRole, onClose, onSuccess }) {
   })
   const [cashAccounts, setCashAccounts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
+  const [accountHeads, setAccountHeads] = useState([])
   const [selectedAccount, setSelectedAccount] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     generateReceiptNo(org.id, org.short_name).then(no => setForm(f => ({...f, receipt_no: no})))
     fetchAccounts()
+    fetchHeads()
   }, [])
+
+  async function fetchHeads() {
+    const { data } = await supabase.from('account_heads')
+      .select('id, name').eq('org_id', org.id).eq('is_active', true)
+    setAccountHeads(data || [])
+  }
 
   async function fetchAccounts() {
     const [{ data: cash }, { data: bank }] = await Promise.all([
@@ -210,6 +218,10 @@ function QuickReceiptModal({ org, userRole, onClose, onSuccess }) {
       const head = HEADS.find(h => h.key === selectedHead)
       const fullDesc = buildDescription()
 
+      // Find matching account_head_id from DB
+      const matchedHead = accountHeads.find(h => h.name === head?.headName)
+      const headId = matchedHead?.id || null
+
       const { error } = await supabase.from('income_entries').insert({
         org_id: org.id,
         entry_date: form.date,
@@ -218,6 +230,7 @@ function QuickReceiptModal({ org, userRole, onClose, onSuccess }) {
         items_collected: head.label,
         amount: Number(form.amount),
         payment_mode: form.mode,
+        head_id: headId,
         cash_account_id: accountType === 'cash' ? accountId : null,
         bank_account_id: accountType === 'bank' ? accountId : null,
         remarks: form.remarks,

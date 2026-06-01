@@ -90,7 +90,12 @@ export default function ChartOfAccounts() {
     setLoading(false)
   }
 
-  const typeLabels = { income: 'Income Heads', expenditure: 'Expenditure Heads', balance_sheet: 'Balance Sheet Items' }
+  const typeLabels = { 
+    income: 'Income Heads', 
+    expenditure: 'Expenditure Heads', 
+    liability: 'Liability (Balance Sheet)',
+    asset: 'Asset (Balance Sheet)',
+  }
   const filteredHeads = heads.filter(h => h.type === activeType)
 
   function toggleExpand(id) {
@@ -169,13 +174,21 @@ export default function ChartOfAccounts() {
       </div>
 
       {/* Type Tabs */}
-      <div className="flex gap-2 mb-6">
-        {Object.entries(typeLabels).map(([key, label]) => (
-          <button key={key} onClick={() => setActiveType(key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeType === key ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            {label}
-          </button>
-        ))}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {Object.entries(typeLabels).map(([key, label]) => {
+          const activeColors = {
+            income: 'bg-green-700 text-white',
+            expenditure: 'bg-red-700 text-white',
+            liability: 'bg-orange-600 text-white',
+            asset: 'bg-blue-700 text-white',
+          }
+          return (
+            <button key={key} onClick={() => setActiveType(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeType === key ? activeColors[key] : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+              {label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Heads List */}
@@ -324,8 +337,8 @@ function AccountHeadsImportModal({ org, existingHeads, onClose, onSuccess }) {
           const name = String(row[0]).trim()
           const type = String(row[1] || '').trim().toLowerCase()
           const sortOrder = Number(row[2]) || 99
-          if (!['income', 'expenditure'].includes(type)) {
-            errs.push(`Heads row ${i+2}: Type must be "income" or "expenditure" — found "${type}"`)
+          if (!['income', 'expenditure', 'liability', 'asset'].includes(type)) {
+            errs.push(`Heads row ${i+2}: Type must be "income", "expenditure", "liability" or "asset" — found "${type}"`)
             return
           }
           newHeads.push({ name, type, sortOrder })
@@ -430,7 +443,7 @@ function AccountHeadsImportModal({ org, existingHeads, onClose, onSuccess }) {
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">
                 <p className="font-semibold mb-2">Instructions:</p>
                 <p>• Download template using "Template" button</p>
-                <p>• Fill Heads sheet — Name, Type (income/expenditure), Sort Order</p>
+                <p>• Fill Heads sheet — Name, Type (income / expenditure / liability / asset), Sort Order</p>
                 <p>• Fill Sub Heads sheet — Sub Head Name, Head Name (exact match), Sort Order</p>
                 <p>• Duplicate heads will be skipped automatically</p>
               </div>
@@ -481,7 +494,12 @@ function AccountHeadsImportModal({ org, existingHeads, onClose, onSuccess }) {
                         <tr key={i} className={i%2===0?'bg-white':'bg-gray-50/50'}>
                           <td className="px-3 py-1.5 font-medium">{h.name}</td>
                           <td className="px-3 py-1.5">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${h.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              h.type === 'income' ? 'bg-green-100 text-green-700' : 
+                              h.type === 'expenditure' ? 'bg-red-100 text-red-700' :
+                              h.type === 'liability' ? 'bg-orange-100 text-orange-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>
                               {h.type}
                             </span>
                           </td>

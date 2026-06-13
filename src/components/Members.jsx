@@ -52,9 +52,12 @@ export default function Members() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showPayModal, setShowPayModal] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(null)
+  const [showPrintModal, setShowPrintModal] = useState(false)
   const [stats, setStats] = useState({ total: 0, active: 0, feeDue: 0, newThisMonth: 0 })
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 50
@@ -62,7 +65,7 @@ export default function Members() {
   const isAdmin = userRole?.role === 'admin'
   const isCashier = ['admin', 'cashier'].includes(userRole?.role)
 
-  useEffect(() => { if (currentOrg) { setPage(0); fetchMembers(0) } }, [currentOrg, filterStatus])
+  useEffect(() => { if (currentOrg) { setPage(0); fetchMembers(0) } }, [currentOrg, filterStatus, fromDate, toDate])
   useEffect(() => { if (currentOrg) fetchMembers(page) }, [page])
   useEffect(() => {
     function handleCollectFeeEvent(e) { setShowPayModal(e.detail) }
@@ -94,6 +97,8 @@ export default function Members() {
     if (filterStatus === 'active') query = query.eq('status', 'active')
     if (filterStatus === 'inactive') query = query.eq('status', 'inactive')
     if (filterStatus === 'fee_due') query = query.eq('status', 'active').gt('outstanding_fees', 0)
+    if (fromDate) query = query.gte('membership_date', fromDate)
+    if (toDate) query = query.lte('membership_date', toDate)
 
     const { data } = await query
     setMembers(data || [])
@@ -179,7 +184,7 @@ export default function Members() {
             <input className="input pl-9" placeholder="Search by name, member no, enrollment no, mobile..."
               value={search} onChange={e => handleSearch(e.target.value)} />
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             {[
               { id: 'all', label: 'All' },
               { id: 'active', label: 'Active' },
@@ -191,6 +196,22 @@ export default function Members() {
                 {f.label}
               </button>
             ))}
+            <div className="flex items-center gap-2 ml-2">
+              <span className="text-xs text-gray-400">Added:</span>
+              <input type="date" className="input w-auto text-xs py-1.5" value={fromDate}
+                onChange={e => setFromDate(e.target.value)} />
+              <span className="text-xs text-gray-400">to</span>
+              <input type="date" className="input w-auto text-xs py-1.5" value={toDate}
+                onChange={e => setToDate(e.target.value)} />
+              {(fromDate || toDate) && (
+                <button onClick={() => { setFromDate(''); setToDate('') }}
+                  className="text-xs text-red-500 hover:text-red-700">✕ Clear</button>
+              )}
+            </div>
+            <button onClick={() => setShowPrintModal(true)}
+              className="btn-secondary flex items-center gap-2 text-sm ml-auto">
+              <Printer className="w-4 h-4" /> Print List
+            </button>
           </div>
           <span className="text-sm text-gray-500">{stats.total.toLocaleString('en-IN')} members</span>
         </div>
@@ -202,7 +223,7 @@ export default function Members() {
           <table className="w-full">
             <thead>
               <tr>
-                {['Member No.', 'Name', 'Enrollment No.', 'Mobile', 'Membership Date', 'Annual Due Date', 'Outstanding', 'Status', 'Actions'].map(h => (
+                {['Member No.', 'Name', 'Enrollment No.', 'Mobile', 'Membership Date', 'Proposer', 'Outstanding', 'Status', 'Actions'].map(h => (
                   <th key={h} className="table-header text-left whitespace-nowrap text-xs">{h}</th>
                 ))}
               </tr>
@@ -243,13 +264,10 @@ export default function Members() {
                     <td className="table-cell text-sm">{m.mobile || '—'}</td>
                     <td className="table-cell text-xs">{formatDate(m.membership_date)}</td>
                     <td className="table-cell text-xs">
-                      <div className={`font-medium ${anniv.status === 'due_soon' ? 'text-orange-600' : anniv.status === 'overdue' ? 'text-red-600' : 'text-gray-600'}`}>
-                        {m.membership_date ? (() => {
-                          const d = new Date(m.membership_date)
-                          return `${String(d.getDate()).padStart(2, '0')}-${MONTHS[d.getMonth()]}`
-                        })() : '—'}
-                      </div>
-                      {anniv.status === 'due_soon' && <div className="text-xs text-orange-500">Due in {anniv.daysLeft} days</div>}
+                      {m.proposer_name
+                        ? <div><div className="font-medium text-gray-700">{m.proposer_name}</div><div className="text-gray-400">{m.proposer_member_no || ''}</div></div>
+                        : <span className="text-gray-300">—</span>
+                      }
                     </td>
                     <td className={`table-cell text-right font-bold ${hasOutstanding ? 'text-red-600' : 'text-green-600'}`}>
                       {hasOutstanding ? fmt(m.outstanding_fees) : '✓ Clear'}
@@ -334,6 +352,15 @@ export default function Members() {
           userRole={userRole}
         />
       )}
+      {showPrintModal && (
+        <MemberListPrintModal
+          org={currentOrg}
+          filterStatus={filterStatus}
+          fromDate={fromDate}
+          toDate={toDate}
+          onClose={() => setShowPrintModal(false)}
+        />
+      )}
     </div>
   )
 }
@@ -343,6 +370,7 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
   const [form, setForm] = useState({
     member_name: '', father_name: '', enrollment_no: '', membership_no: '',
     mobile: '', email: '', address: '', office: '', membership_date: new Date().toISOString().split('T')[0],
+    blood_group: '',
     icard_issued: false,
     proposer_name: '', proposer_member_no: '', proposer_enrollment: '',
     seconder_name: '', seconder_member_no: '', seconder_enrollment: '',
@@ -398,6 +426,7 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
         email: form.email,
         address: form.address,
         office: form.office,
+        blood_group: form.blood_group || null,
         membership_date: form.membership_date,
         status: 'active',
         icard_issued: form.icard_issued,
@@ -503,9 +532,19 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
             </div>
             <div>
               <label className="label">Email</label>
-              <input type="email" className="input" value={form.email}
+              <input type="email" className="input" value={form.email} data-no-upper
                 onChange={e => setForm({ ...form, email: e.target.value })}
                 placeholder="email@example.com" />
+            </div>
+            <div>
+              <label className="label">Blood Group</label>
+              <select className="input" value={form.blood_group}
+                onChange={e => setForm({ ...form, blood_group: e.target.value })}>
+                <option value="">Select</option>
+                {['A+','A-','B+','B-','O+','O-','AB+','AB-'].map(bg => (
+                  <option key={bg} value={bg}>{bg}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="label">Membership Date *</label>
@@ -1247,6 +1286,152 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
           onClose={() => setReprintReceipt(null)}
         />
       )}
+    </div>
+  )
+}
+
+// ---- MEMBER LIST PRINT MODAL ----
+function MemberListPrintModal({ org, filterStatus, fromDate, toDate, onClose }) {
+  const [members, setMembers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [cols, setCols] = useState({
+    member_no: true,
+    member_name: true,
+    father_name: true,
+    enrollment_no: true,
+    mobile: true,
+    email: true,
+    membership_date: true,
+    blood_group: true,
+    address: true,
+    proposer_name: true,
+    status: true,
+    outstanding_fees: true,
+  })
+
+  const COL_LABELS = {
+    member_no: 'Member No.',
+    member_name: 'Name',
+    father_name: 'Father/Husband Name',
+    enrollment_no: 'Enrollment No.',
+    mobile: 'Mobile',
+    email: 'Email',
+    membership_date: 'Membership Date',
+    blood_group: 'Blood Group',
+    address: 'Address',
+    proposer_name: 'Proposed By',
+    status: 'Status',
+    outstanding_fees: 'Outstanding',
+  }
+
+  useEffect(() => { fetchAll() }, [])
+
+  async function fetchAll() {
+    setLoading(true)
+    let query = supabase.from('dcba_members')
+      .select('*')
+      .eq('org_id', org.id)
+      .order('member_no')
+
+    if (filterStatus === 'active') query = query.eq('status', 'active')
+    if (filterStatus === 'inactive') query = query.eq('status', 'inactive')
+    if (filterStatus === 'fee_due') query = query.eq('status', 'active').gt('outstanding_fees', 0)
+    if (fromDate) query = query.gte('membership_date', fromDate)
+    if (toDate) query = query.lte('membership_date', toDate)
+
+    const { data } = await query
+    setMembers(data || [])
+    setLoading(false)
+  }
+
+  function handlePrint() {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmt = (d) => {
+      if (!d) return '—'
+      const dt = new Date(d)
+      return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
+    }
+
+    const activeCols = Object.entries(cols).filter(([, v]) => v).map(([k]) => k)
+
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html><html><head>
+    <title>Member List — ${org.name}</title>
+    <style>
+      @page { margin: 10mm; size: A4 landscape; }
+      body { font-family: Arial, sans-serif; font-size: 8px; color: #000; }
+      h2 { font-size: 13px; text-align: center; margin-bottom: 3px; }
+      p.sub { text-align: center; font-size: 8px; color: #555; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #1a3a5c; color: white; padding: 4px 5px; text-align: left; font-size: 7.5px; }
+      td { padding: 3px 5px; border-bottom: 0.5px solid #eee; font-size: 7.5px; }
+      tr:nth-child(even) { background: #f9f9f9; }
+      .right { text-align: right; }
+      @media print { @page { margin: 8mm; } body { -webkit-print-color-adjust: exact; } }
+    </style></head><body>
+    <h2>${org.name}</h2>
+    <p class="sub">Member List · ${filterStatus === 'all' ? 'All Members' : filterStatus} ${fromDate ? `· From: ${fmt(fromDate)}` : ''} ${toDate ? `To: ${fmt(toDate)}` : ''} · Total: ${members.length} · Printed: ${fmt(new Date())}</p>
+    <table>
+      <thead><tr>
+        <th>#</th>
+        ${activeCols.map(c => `<th>${COL_LABELS[c]}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${members.map((m, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            ${activeCols.map(c => {
+              if (c === 'membership_date') return `<td>${fmt(m[c])}</td>`
+              if (c === 'outstanding_fees') return `<td class="right">${Number(m[c] || 0) > 0 ? '₹' + Number(m[c]).toLocaleString('en-IN') : '✓ Clear'}</td>`
+              if (c === 'proposer_name') return `<td>${m.proposer_name || '—'}${m.proposer_member_no ? ` (${m.proposer_member_no})` : ''}</td>`
+              return `<td>${m[c] || '—'}</td>`
+            }).join('')}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <script>window.onload=function(){window.print();setTimeout(()=>window.close(),500)}<\/script>
+    </body></html>`)
+    win.document.close()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Printer className="w-5 h-5 text-blue-700" /> Print Member List
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+        </div>
+
+        <div className="px-6 py-4">
+          <p className="text-sm font-semibold text-gray-700 mb-3">Select columns to print:</p>
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(COL_LABELS).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded-lg">
+                <input type="checkbox" checked={cols[key]}
+                  onChange={e => setCols({ ...cols, [key]: e.target.checked })}
+                  className="w-4 h-4 text-blue-600" />
+                <span className="text-sm text-gray-700">{label}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+            {loading ? 'Loading...' : `${members.length} members will be printed · Landscape A4`}
+          </div>
+
+          <div className="flex gap-3 mt-4 justify-end">
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={handlePrint} disabled={loading || members.length === 0}
+              className="btn-primary flex items-center gap-2">
+              <Printer className="w-4 h-4" />
+              Print {members.length} Members
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

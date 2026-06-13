@@ -637,10 +637,12 @@ function GrievanceDetailModal({ grievance: g, org, userRole, isAdmin, onClose, o
 
 // ---- ADMIN REQUESTS PANEL ----
 const REQUEST_TYPES = {
-  experience_letter: { label: 'Experience Letter', color: 'bg-blue-100 text-blue-700' },
-  icard:             { label: 'I-Card',             color: 'bg-purple-100 text-purple-700' },
-  seat_allotment:    { label: 'Seat Allotment',     color: 'bg-green-100 text-green-700' },
-  locker_allotment:  { label: 'Locker Allotment',   color: 'bg-orange-100 text-orange-700' },
+  experience_letter:    { label: 'Experience Letter',      color: 'bg-blue-100 text-blue-700' },
+  icard:                { label: 'I-Card',                 color: 'bg-purple-100 text-purple-700' },
+  membership_certificate: { label: 'Membership Certificate', color: 'bg-teal-100 text-teal-700' },
+  vehicle_pass:         { label: 'Vehicle Pass',           color: 'bg-red-100 text-red-700' },
+  seat_allotment:       { label: 'Seat Allotment',         color: 'bg-green-100 text-green-700' },
+  locker_allotment:     { label: 'Locker Allotment',       color: 'bg-orange-100 text-orange-700' },
 }
 
 const REQ_STATUS = {
@@ -768,6 +770,13 @@ function AdminRequestsPanel({ org }) {
       <div class="field"><div class="label">Request Type</div><div class="value">${REQUEST_TYPES[r.request_type]?.label || r.request_type}</div></div>
       <div class="field"><div class="label">Status</div><div class="value">${r.status}</div></div>
     </div>
+    ${r.request_type === 'vehicle_pass' ? `
+      <div class="field"><div class="label">Vehicle Type</div><div class="value">${r.vehicle_type || '—'}</div></div>
+      <div class="field"><div class="label">Make / Brand</div><div class="value">${r.vehicle_make || '—'}</div></div>
+      <div class="field"><div class="label">Vehicle Number</div><div class="value">${r.vehicle_no || '—'}</div></div>
+      <div class="field"><div class="label">Registered Owner</div><div class="value">${r.registered_owner || '—'}</div></div>
+      ${r.owner_relationship ? `<div class="field"><div class="label">Relationship</div><div class="value">${r.owner_relationship}</div></div>` : ''}
+    ` : ''}
     ${r.request_type === 'experience_letter' ? `
       <div class="field"><div class="label">Purpose</div><div class="value">${r.el_purpose || '—'}</div></div>
     ` : ''}
@@ -877,6 +886,14 @@ function AdminRequestsPanel({ org }) {
                       {r.icard_transaction_ref ? ` · Ref: ${r.icard_transaction_ref}` : ''}
                       {r.icard_payment_mode ? ` · ${r.icard_payment_mode.toUpperCase()}` : ''}
                     </p>
+                  )}
+                  {r.request_type === 'vehicle_pass' && (
+                    <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                      <p className="text-xs text-gray-400 font-medium mb-1">Vehicle Details:</p>
+                      <p className="text-xs text-gray-700">Type: <strong>{r.vehicle_type}</strong> · Make: <strong>{r.vehicle_make}</strong></p>
+                      <p className="text-xs text-gray-700">Vehicle No.: <strong>{r.vehicle_no}</strong></p>
+                      <p className="text-xs text-gray-700">Registered Owner: <strong>{r.registered_owner}</strong>{r.owner_relationship ? ` (${r.owner_relationship})` : ''}</p>
+                    </div>
                   )}
                   {(r.request_type === 'seat_allotment' || r.request_type === 'locker_allotment') && r.preferred_location && (
                     <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">

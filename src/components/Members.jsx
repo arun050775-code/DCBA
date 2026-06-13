@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { Users, Plus, Search, Eye, IndianRupee, CreditCard, AlertCircle, CheckCircle, Printer, Edit } from 'lucide-react'
+import { Users, Plus, Search, Eye, IndianRupee, CreditCard, AlertCircle, CheckCircle, Printer, Edit, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import MemberReceiptPrint from './members/MemberReceiptPrint'
 
 const ADMISSION_FEE = 600
@@ -1356,6 +1357,42 @@ function MemberListPrintModal({ org, filterStatus, fromDate, toDate, onClose }) 
     setLoading(false)
   }
 
+  function handleExcel() {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmt = (d) => {
+      if (!d) return '—'
+      const dt = new Date(d)
+      return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
+    }
+
+    const activeCols = Object.entries(cols).filter(([, v]) => v).map(([k]) => k)
+
+    const rows = [
+      [org.name],
+      [`Member List · ${filterStatus === 'all' ? 'All Members' : filterStatus} · Total: ${members.length}`],
+      [],
+      ['#', ...activeCols.map(c => COL_LABELS[c])],
+    ]
+
+    members.forEach((m, i) => {
+      rows.push([
+        i + 1,
+        ...activeCols.map(c => {
+          if (c === 'membership_date') return fmt(m[c])
+          if (c === 'outstanding_fees') return Number(m[c] || 0)
+          if (c === 'proposer_name') return m.proposer_name ? `${m.proposer_name}${m.proposer_member_no ? ` (${m.proposer_member_no})` : ''}` : '—'
+          return m[c] || '—'
+        })
+      ])
+    })
+
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 5 }, ...activeCols.map(c => ({ wch: c === 'address' ? 40 : c === 'member_name' || c === 'father_name' ? 25 : 15 }))]
+    XLSX.utils.book_append_sheet(wb, ws, 'Members')
+    XLSX.writeFile(wb, `DCBA_Members_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
   function handlePrint() {
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
     const fmt = (d) => {
@@ -1436,6 +1473,10 @@ function MemberListPrintModal({ org, filterStatus, fromDate, toDate, onClose }) 
 
           <div className="flex gap-3 mt-4 justify-end">
             <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={handleExcel} disabled={loading || members.length === 0}
+              className="btn-secondary flex items-center gap-2">
+              <Download className="w-4 h-4" /> Excel
+            </button>
             <button onClick={handlePrint} disabled={loading || members.length === 0}
               className="btn-primary flex items-center gap-2">
               <Printer className="w-4 h-4" />

@@ -99,24 +99,11 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Committee */}
-      <div className="card mb-6">
-        <h2 className="text-lg font-bold text-[#1A3A5C] mb-4 pb-2 border-b-2 border-[#C8960C]">
-          🏛️ Management Committee
-        </h2>
-        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 gap-4">
-          {COMMITTEE.map(m => (
-            <div key={m.name} className="text-center">
-              <div className="w-14 h-14 mx-auto mb-2 rounded-full border-2 border-[#C8960C] flex items-center justify-center shadow-md"
-                style={{ background: 'linear-gradient(135deg, #1a3a5c, #2e5f8a)' }}>
-                <span className="text-yellow-400 font-bold text-sm">{getInitials(m.name)}</span>
-              </div>
-              <p className="text-xs font-bold text-[#1A3A5C] leading-tight">{m.name}</p>
-              <p className="text-xs text-[#C8960C] font-medium leading-tight mt-0.5">{m.designation}</p>
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-gray-400 mt-3 italic">* Photographs will be updated on receipt from management</p>
+      {/* DCBA Logo */}
+      <div className="card mb-6 flex items-center justify-center py-8">
+        <img src={DCBA_LOGO} alt="DCBA"
+          className="h-40 object-contain opacity-80"
+          onError={e => { e.target.parentElement.innerHTML = '<span style="font-weight:900;color:#1a3a5c;font-size:4rem">DCBA</span>' }} />
       </div>
 
       {/* Recent Collections */}

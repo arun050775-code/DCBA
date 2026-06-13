@@ -1328,19 +1328,31 @@ function MemberListPrintModal({ org, filterStatus, fromDate, toDate, onClose }) 
 
   async function fetchAll() {
     setLoading(true)
-    let query = supabase.from('dcba_members')
-      .select('*')
-      .eq('org_id', org.id)
-      .order('member_no')
+    let allMembers = []
+    let from = 0
+    const batchSize = 1000
 
-    if (filterStatus === 'active') query = query.eq('status', 'active')
-    if (filterStatus === 'inactive') query = query.eq('status', 'inactive')
-    if (filterStatus === 'fee_due') query = query.eq('status', 'active').gt('outstanding_fees', 0)
-    if (fromDate) query = query.gte('membership_date', fromDate)
-    if (toDate) query = query.lte('membership_date', toDate)
+    while (true) {
+      let query = supabase.from('dcba_members')
+        .select('*')
+        .eq('org_id', org.id)
+        .order('member_no')
+        .range(from, from + batchSize - 1)
 
-    const { data } = await query
-    setMembers(data || [])
+      if (filterStatus === 'active') query = query.eq('status', 'active')
+      if (filterStatus === 'inactive') query = query.eq('status', 'inactive')
+      if (filterStatus === 'fee_due') query = query.eq('status', 'active').gt('outstanding_fees', 0)
+      if (fromDate) query = query.gte('membership_date', fromDate)
+      if (toDate) query = query.lte('membership_date', toDate)
+
+      const { data } = await query
+      if (!data || data.length === 0) break
+      allMembers = [...allMembers, ...data]
+      if (data.length < batchSize) break
+      from += batchSize
+    }
+
+    setMembers(allMembers)
     setLoading(false)
   }
 

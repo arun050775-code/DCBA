@@ -24,6 +24,8 @@ import DayEndReport from './components/DayEndReport'
 import QuickReceipt from './components/QuickReceipt'
 import LockerSeatManagement from './components/LockerSeatManagement'
 import RazorpaySettlements from './components/RazorpaySettlements'
+import ICardPrint from './components/ICardPrint'
+import Settings from './components/Settings'
 
 function PrivateLayout() {
   const { user, loading, userRole } = useAuth()
@@ -71,6 +73,8 @@ function PrivateLayout() {
           <Route path="/cheques-in-hand" element={<ChequesInHand />} />
           <Route path="/locker-seats" element={<LockerSeatManagement />} />
           <Route path="/razorpay-settlements" element={<RazorpaySettlements />} />
+          <Route path="/icard-print" element={<ICardPrint />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/settings" element={<ComingSoon title="Settings" />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

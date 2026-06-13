@@ -404,6 +404,26 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
       })
       if (error) throw error
       toast.success(`Member ${memberNo} created!`)
+
+      // Auto-create I-Card request for new member
+      const fy = new Date().getMonth() >= 3
+        ? `${new Date().getFullYear()}-${String(new Date().getFullYear()+1).slice(2)}`
+        : `${new Date().getFullYear()-1}-${String(new Date().getFullYear()).slice(2)}`
+      const { count: reqCount } = await supabase.from('dcba_member_requests')
+        .select('*', { count: 'exact', head: true }).eq('org_id', org.id)
+      const requestNo = `DCBA/REQ/${fy}/${String((reqCount||0)+1).padStart(4,'0')}`
+      await supabase.from('dcba_member_requests').insert({
+        org_id: org.id,
+        request_no: requestNo,
+        request_type: 'icard',
+        request_date: new Date().toISOString().split('T')[0],
+        status: 'approved',
+        icard_status: 'pending',
+        icard_fee_amount: 50,
+        icard_fee_paid: form.icard_issued,
+        remarks: 'Auto-created at admission',
+      })
+
       // Return new member for fee collection
       const { data: newMember } = await supabase.from('dcba_members')
         .select('*').eq('org_id', org.id).eq('member_no', memberNo).single()

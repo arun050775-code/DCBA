@@ -42,7 +42,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #0f1f3d 0%, #1a3a5c 60%, #0d2137 100%)' }}>
 
-      {/* LEFT PANEL — Management Committee */}
+      {/* LEFT PANEL — DCBA Logo */}
       <div className="hidden lg:flex flex-col w-1/2 p-6 overflow-y-auto">
         <div className="flex items-center gap-4 mb-5">
           <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
@@ -57,25 +57,12 @@ export default function Login() {
 
         <div className="h-0.5 bg-gradient-to-r from-yellow-500 via-yellow-300 to-transparent mb-5 rounded-full" />
 
-        <p className="text-yellow-400 text-xs font-bold uppercase tracking-widest mb-4 text-center">Management Committee 2025-26</p>
-
-        <div className="grid grid-cols-4 gap-3">
-          {COMMITTEE.slice(0, 12).map((m, idx) => (
-            <div key={m.name} className="flex flex-col items-center text-center group">
-              <div className="w-12 h-12 rounded-full border-2 border-yellow-500 flex items-center justify-center mb-1 relative shadow-lg group-hover:border-yellow-300 transition-all"
-                style={{ background: 'linear-gradient(135deg, #1a3a5c, #2e5f8a)' }}>
-                <span className="text-yellow-400 font-bold text-xs">{getInitials(m.name)}</span>
-                {idx === 0 && (
-                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-blue-900 w-4 h-4 rounded-full flex items-center justify-center font-bold" style={{ fontSize: '0.5rem' }}>★</span>
-                )}
-              </div>
-              <p className="text-white font-bold leading-tight" style={{ fontSize: '0.58rem' }}>{m.name}</p>
-              <p className="text-yellow-400 leading-tight mt-0.5" style={{ fontSize: '0.52rem' }}>{m.designation}</p>
-            </div>
-          ))}
+        {/* Big DCBA Logo */}
+        <div className="flex-1 flex items-center justify-center">
+          <img src={DCBA_LOGO} alt="DCBA"
+            className="w-64 h-64 object-contain opacity-80"
+            onError={e => { e.target.parentElement.innerHTML = '<span style="font-weight:900;color:white;font-size:5rem;opacity:0.3">DCBA</span>' }} />
         </div>
-
-        <p className="text-blue-600 text-xs mt-4 italic text-center">* Photographs will be updated on receipt</p>
 
         <div className="mt-auto pt-4 border-t border-white/10">
           <p className="text-blue-600 text-xs text-center">© 2026 Dwarka Court Bar Association</p>

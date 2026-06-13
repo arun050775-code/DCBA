@@ -11,7 +11,9 @@
   .btn-secondary { @apply bg-white hover:bg-gray-50 text-gray-700 font-medium px-4 py-2 rounded-lg border border-gray-300 transition-colors duration-150; }
   .btn-danger { @apply bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-150; }
   .btn-success { @apply bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-150; }
-  .input { @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent; }
+  .input { @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent; text-transform: uppercase; }
+  .input::placeholder { text-transform: none; }
+  input[type="email"].input, input[type="password"].input, input[type="date"].input, input[type="time"].input { text-transform: none; }
   .label { @apply block text-sm font-medium text-gray-700 mb-1; }
   .card { @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6; }
   .table-header { @apply bg-blue-900 text-white text-xs font-semibold uppercase tracking-wider px-4 py-3; }

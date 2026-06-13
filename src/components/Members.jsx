@@ -342,8 +342,10 @@ export default function Members() {
 function AddMemberModal({ org, onClose, onSuccess, members }) {
   const [form, setForm] = useState({
     member_name: '', father_name: '', enrollment_no: '', membership_no: '',
-    mobile: '', email: '', address: '', membership_date: new Date().toISOString().split('T')[0],
+    mobile: '', email: '', address: '', office: '', membership_date: new Date().toISOString().split('T')[0],
     icard_issued: false,
+    proposer_name: '', proposer_member_no: '', proposer_enrollment: '',
+    seconder_name: '', seconder_member_no: '', seconder_enrollment: '',
   })
   const [saving, setSaving] = useState(false)
   const [preview, setPreview] = useState('')
@@ -395,12 +397,19 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
         mobile: form.mobile,
         email: form.email,
         address: form.address,
+        office: form.office,
         membership_date: form.membership_date,
         status: 'active',
         icard_issued: form.icard_issued,
         outstanding_fees: outstanding,
         admission_fee_paid: false,
         annual_fee_paid: false,
+        proposer_name: form.proposer_name || null,
+        proposer_member_no: form.proposer_member_no || null,
+        proposer_enrollment: form.proposer_enrollment || null,
+        seconder_name: form.seconder_name || null,
+        seconder_member_no: form.seconder_member_no || null,
+        seconder_enrollment: form.seconder_enrollment || null,
       })
       if (error) throw error
       toast.success(`Member ${memberNo} created!`)
@@ -504,10 +513,62 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
                 onChange={e => setForm({ ...form, membership_date: e.target.value })} />
             </div>
             <div className="col-span-2">
-              <label className="label">Address</label>
+              <label className="label">Residential Address</label>
               <input className="input" value={form.address}
                 onChange={e => setForm({ ...form, address: e.target.value })}
-                placeholder="Residential / Chamber address" />
+                placeholder="Residential address" />
+            </div>
+            <div className="col-span-2">
+              <label className="label">Office / Chamber Address</label>
+              <input className="input" value={form.office}
+                onChange={e => setForm({ ...form, office: e.target.value })}
+                placeholder="Office / Chamber address at court" />
+            </div>
+          </div>
+
+          {/* Proposed By */}
+          <div>
+            <p className="text-sm font-bold text-gray-700 bg-gray-100 px-3 py-2 rounded-lg mb-3">Proposed By</p>
+            <div className="grid grid-cols-3 gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <div>
+                <label className="label text-xs">Name</label>
+                <input className="input" value={form.proposer_name}
+                  onChange={e => setForm({ ...form, proposer_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="label text-xs">Member No.</label>
+                <input className="input" value={form.proposer_member_no}
+                  onChange={e => setForm({ ...form, proposer_member_no: e.target.value })}
+                  placeholder="A-001" />
+              </div>
+              <div>
+                <label className="label text-xs">Enrollment No.</label>
+                <input className="input" value={form.proposer_enrollment}
+                  onChange={e => setForm({ ...form, proposer_enrollment: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          {/* Seconded By */}
+          <div>
+            <p className="text-sm font-bold text-gray-700 bg-gray-100 px-3 py-2 rounded-lg mb-3">Seconded By</p>
+            <div className="grid grid-cols-3 gap-3 bg-green-50 border border-green-200 rounded-xl p-3">
+              <div>
+                <label className="label text-xs">Name</label>
+                <input className="input" value={form.seconder_name}
+                  onChange={e => setForm({ ...form, seconder_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="label text-xs">Member No.</label>
+                <input className="input" value={form.seconder_member_no}
+                  onChange={e => setForm({ ...form, seconder_member_no: e.target.value })}
+                  placeholder="A-001" />
+              </div>
+              <div>
+                <label className="label text-xs">Enrollment No.</label>
+                <input className="input" value={form.seconder_enrollment}
+                  onChange={e => setForm({ ...form, seconder_enrollment: e.target.value })} />
+              </div>
             </div>
           </div>
 
@@ -1005,6 +1066,8 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
               ['Status', member.status === 'active' ? '✅ Active' : '❌ Inactive'],
               ['I-Card Issued', member.icard_issued ? '✅ Yes' : '❌ No'],
               ['Last Fee Paid', formatDate(member.last_fee_paid_date)],
+              ['Proposed By', member.proposer_name ? `${member.proposer_name} (${member.proposer_member_no || '—'})` : '—'],
+              ['Seconded By', member.seconder_name ? `${member.seconder_name} (${member.seconder_member_no || '—'})` : '—'],
             ].map(([label, value]) => (
               <div key={label}>
                 <p className="text-xs text-gray-400 font-medium">{label}</p>

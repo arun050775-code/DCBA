@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { path: '/locker-seats', label: 'Locker & Seats', icon: Lock, roles: ['admin','cashier','supervisor','accountant'] },
   { path: '/razorpay-settlements', label: 'Online Settlements', icon: CreditCard, roles: ['admin','supervisor','accountant'] },
   { path: '/icard-print', label: 'I-Card Printing', icon: CreditCard, roles: ['admin','supervisor','cashier'] },
+  { path: '/sticker-print', label: 'Vehicle Stickers', icon: CreditCard, roles: ['admin','supervisor','cashier'] },
   { path: '/expenditure', label: 'Expenditure', icon: FileText, roles: ['admin','supervisor','accountant'] },
   { path: '/payroll', label: 'Payroll', icon: UserCheck, roles: ['admin','accountant'] },
   { path: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin','supervisor','accountant','management'] },

@@ -25,6 +25,7 @@ import QuickReceipt from './components/QuickReceipt'
 import LockerSeatManagement from './components/LockerSeatManagement'
 import RazorpaySettlements from './components/RazorpaySettlements'
 import ICardPrint from './components/ICardPrint'
+import StickerPrint from './components/StickerPrint'
 import Settings from './components/Settings'
 
 function PrivateLayout() {
@@ -74,6 +75,7 @@ function PrivateLayout() {
           <Route path="/locker-seats" element={<LockerSeatManagement />} />
           <Route path="/razorpay-settlements" element={<RazorpaySettlements />} />
           <Route path="/icard-print" element={<ICardPrint />} />
+          <Route path="/sticker-print" element={<StickerPrint />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings" element={<ComingSoon title="Settings" />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

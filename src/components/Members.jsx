@@ -58,7 +58,7 @@ export default function Members() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showPayModal, setShowPayModal] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(null)
-  const [showPrintModal, setShowPrintModal] = useState(false)
+  const [showReactivation, setShowReactivation] = useState(false)
   const [stats, setStats] = useState({ total: 0, active: 0, feeDue: 0, newThisMonth: 0 })
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 50
@@ -209,6 +209,10 @@ export default function Members() {
                   className="text-xs text-red-500 hover:text-red-700">✕ Clear</button>
               )}
             </div>
+            <button onClick={() => setShowReactivation(true)}
+              className="btn-secondary flex items-center gap-2 text-sm">
+              <CheckCircle className="w-4 h-4 text-green-600" /> Reactivation Requests
+            </button>
             <button onClick={() => setShowPrintModal(true)}
               className="btn-secondary flex items-center gap-2 text-sm ml-auto">
               <Printer className="w-4 h-4" /> Print List
@@ -351,6 +355,13 @@ export default function Members() {
           onClose={() => setShowDetailModal(null)}
           org={currentOrg}
           userRole={userRole}
+        />
+      )}
+      {showReactivation && (
+        <ReactivationModal
+          org={currentOrg}
+          onClose={() => setShowReactivation(false)}
+          onSuccess={() => { setShowReactivation(false); fetchMembers(0) }}
         />
       )}
       {showPrintModal && (
@@ -997,6 +1008,7 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
     dob: member.dob || '',
   })
   const [savingAllotments, setSavingAllotments] = useState(false)
+  const [showStickerModal, setShowStickerModal] = useState(false)
 
   async function saveAllotments() {
     setSavingAllotments(true)
@@ -1271,14 +1283,28 @@ function MemberDetailModal({ member, onClose, org, userRole }) {
 
         <div className="px-6 py-4 border-t flex justify-between items-center flex-shrink-0">
           <button onClick={onClose} className="btn-secondary">Close</button>
-          {Number(member.outstanding_fees) > 0 && (
-            <button onClick={() => { onClose(); setTimeout(() => document.dispatchEvent(new CustomEvent('collectFee', { detail: member })), 100) }}
-              className="btn-primary flex items-center gap-2">
-              💰 Collect Fee ₹{Number(member.outstanding_fees).toLocaleString('en-IN')}
+          <div className="flex gap-2">
+            <button onClick={() => setShowStickerModal(true)}
+              className="btn-secondary flex items-center gap-2">
+              🚗 Vehicle Sticker
             </button>
-          )}
+            {Number(member.outstanding_fees) > 0 && (
+              <button onClick={() => { onClose(); setTimeout(() => document.dispatchEvent(new CustomEvent('collectFee', { detail: member })), 100) }}
+                className="btn-primary flex items-center gap-2">
+                💰 Collect Fee ₹{Number(member.outstanding_fees).toLocaleString('en-IN')}
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {showStickerModal && (
+        <VehicleStickerModal
+          member={member}
+          org={org}
+          onClose={() => setShowStickerModal(false)}
+        />
+      )}
 
       {/* Reprint modal */}
       {reprintReceipt && (
@@ -1483,6 +1509,345 @@ function MemberListPrintModal({ org, filterStatus, fromDate, toDate, onClose }) 
               Print {members.length} Members
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- REACTIVATION MODAL ----
+function ReactivationModal({ org, onClose, onSuccess }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(null)
+
+  useEffect(() => { fetchRequests() }, [])
+
+  async function fetchRequests() {
+    setLoading(true)
+    const { data } = await supabase.from('dcba_reactivation_requests')
+      .select('*, dcba_members(member_name, member_no, outstanding_fees, deactivated_at, deactivated_reason)')
+      .eq('org_id', org.id)
+      .order('requested_at', { ascending: false })
+    setRequests(data || [])
+    setLoading(false)
+  }
+
+  async function handleAction(req, action) {
+    setProcessing(req.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+
+      await supabase.from('dcba_reactivation_requests').update({
+        status: action,
+        approved_by: session?.user?.id,
+        approved_at: new Date().toISOString(),
+      }).eq('id', req.id)
+
+      if (action === 'approved') {
+        // Reactivate member — retrospective (restore original status)
+        await supabase.from('dcba_members').update({
+          status: 'active',
+          reactivation_approved_at: new Date().toISOString(),
+          reactivation_approved_by: session?.user?.id,
+          deactivated_at: null,
+          deactivated_reason: null,
+        }).eq('id', req.member_id)
+        toast.success(`${req.member_name} reactivated!`)
+      } else {
+        toast.success('Request rejected')
+      }
+      fetchRequests()
+    } catch (err) {
+      toast.error(err.message)
+    }
+    setProcessing(null)
+  }
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  function fmt(d) {
+    if (!d) return '—'
+    const dt = new Date(d)
+    return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`
+  }
+
+  const pending = requests.filter(r => r.status === 'pending')
+  const processed = requests.filter(r => r.status !== 'pending')
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-600" /> Reactivation Requests
+            {pending.length > 0 && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pending.length} pending</span>
+            )}
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {loading ? (
+            <p className="text-center text-gray-400 py-8">Loading...</p>
+          ) : requests.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <CheckCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>No reactivation requests</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {pending.length > 0 && (
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-3">⏳ Pending Approval ({pending.length})</p>
+                  <div className="space-y-3">
+                    {pending.map(req => (
+                      <div key={req.id} className="border border-orange-200 bg-orange-50 rounded-xl p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <p className="font-bold text-gray-800">{req.member_name}</p>
+                            <p className="text-sm text-blue-700 font-semibold">{req.member_no}</p>
+                            <p className="text-xs text-gray-500 mt-1">Requested: {fmt(req.requested_at)}</p>
+                            <p className="text-xs text-red-600 mt-1">
+                              Outstanding: ₹{Number(req.outstanding_at_request || 0).toLocaleString('en-IN')}
+                            </p>
+                            {req.dcba_members?.deactivated_reason && (
+                              <p className="text-xs text-gray-500 mt-1">{req.dcba_members.deactivated_reason}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <button onClick={() => handleAction(req, 'approved')}
+                              disabled={processing === req.id}
+                              className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg font-semibold flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              {processing === req.id ? '...' : 'Approve'}
+                            </button>
+                            <button onClick={() => handleAction(req, 'rejected')}
+                              disabled={processing === req.id}
+                              className="px-4 py-2 bg-red-100 text-red-700 text-sm rounded-lg font-semibold">
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {processed.length > 0 && (
+                <div>
+                  <p className="text-sm font-bold text-gray-500 mb-3">✅ Processed ({processed.length})</p>
+                  <div className="space-y-2">
+                    {processed.map(req => (
+                      <div key={req.id} className={`border rounded-xl p-3 flex items-center justify-between ${req.status === 'approved' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <div>
+                          <p className="font-medium text-gray-800 text-sm">{req.member_name} · {req.member_no}</p>
+                          <p className="text-xs text-gray-400">{fmt(req.requested_at)}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${req.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {req.status === 'approved' ? '✅ Approved' : '❌ Rejected'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t">
+          <button onClick={onClose} className="btn-secondary w-full">Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- VEHICLE STICKER MODAL ----
+function VehicleStickerModal({ member, org, onClose }) {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [counts, setCounts] = useState({ '2W': 0, '4W': 0 })
+  const [form, setForm] = useState({
+    vehicle_type: '2W',
+    vehicle_no: '',
+    vehicle_make: '',
+    payment_mode: 'cash',
+  })
+
+  const currentYear = new Date().getFullYear()
+  const FREE_QUOTA = 2
+  const FEE_PER_STICKER = 50
+
+  useEffect(() => { fetchCounts() }, [])
+
+  async function fetchCounts() {
+    setLoading(true)
+    const { data } = await supabase.from('dcba_vehicle_stickers')
+      .select('vehicle_type')
+      .eq('member_id', member.id)
+      .eq('calendar_year', currentYear)
+
+    const c = { '2W': 0, '4W': 0 }
+    ;(data || []).forEach(r => { c[r.vehicle_type] = (c[r.vehicle_type] || 0) + 1 })
+    setCounts(c)
+    setLoading(false)
+  }
+
+  const usedCount = counts[form.vehicle_type] || 0
+  const isWithinQuota = usedCount < FREE_QUOTA
+  const feeRequired = isWithinQuota ? 0 : FEE_PER_STICKER
+
+  async function handleSubmit() {
+    if (!form.vehicle_no) return toast.error('Vehicle number required')
+    if (!form.vehicle_make) return toast.error('Vehicle make required')
+
+    setSaving(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+
+      // If fee required, generate receipt via income_entries
+      let receiptNo = null
+      if (feeRequired > 0) {
+        const { count } = await supabase.from('income_entries')
+          .select('*', { count: 'exact', head: true }).eq('org_id', org.id)
+        const fy = new Date().getMonth() >= 3
+          ? `${new Date().getFullYear()}-${String(new Date().getFullYear()+1).slice(2)}`
+          : `${new Date().getFullYear()-1}-${String(new Date().getFullYear()).slice(2)}`
+        receiptNo = `DCBA/RCP/${fy}/${String((count||0)+1).padStart(4,'0')}`
+
+        // Find Vehicle Stickers account head
+        const { data: head } = await supabase.from('account_heads')
+          .select('id').eq('org_id', org.id).eq('name', 'Vehicle Stickers').single()
+
+        await supabase.from('income_entries').insert({
+          org_id: org.id,
+          entry_date: new Date().toISOString().split('T')[0],
+          receipt_no: receiptNo,
+          description: `Vehicle Sticker (${form.vehicle_type}) — ${member.member_name} (${member.member_no}) | Rcpt: ${receiptNo}`,
+          items_collected: 'Vehicle Sticker',
+          amount: feeRequired,
+          payment_mode: form.payment_mode,
+          head_id: head?.id || null,
+          member_id: member.id,
+          created_by: session?.user?.id,
+        })
+      }
+
+      // Insert sticker record
+      const { error } = await supabase.from('dcba_vehicle_stickers').insert({
+        org_id: org.id,
+        member_id: member.id,
+        member_no: member.member_no,
+        member_name: member.member_name,
+        mobile: member.mobile,
+        vehicle_type: form.vehicle_type,
+        vehicle_no: form.vehicle_no,
+        vehicle_make: form.vehicle_make,
+        calendar_year: currentYear,
+        fee_charged: feeRequired,
+        payment_mode: feeRequired > 0 ? form.payment_mode : null,
+        receipt_no: receiptNo,
+        sticker_status: 'pending',
+        source: 'counter',
+        created_by: session?.user?.id,
+      })
+      if (error) throw error
+
+      toast.success(feeRequired > 0
+        ? `Sticker added! ₹${feeRequired} collected. Receipt: ${receiptNo}`
+        : `Sticker added! (Free — within ${FREE_QUOTA}/year quota)`)
+      onClose()
+    } catch (err) {
+      toast.error(err.message)
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <h3 className="text-lg font-semibold">🚗 Vehicle Sticker — {member.member_name}</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Quota status */}
+          <div className="grid grid-cols-2 gap-3">
+            {['2W', '4W'].map(type => (
+              <div key={type} className={`border rounded-xl p-3 text-center ${form.vehicle_type === type ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
+                <p className="text-xs text-gray-500 font-medium">{type === '2W' ? '🛵 Two Wheeler' : '🚗 Four Wheeler'}</p>
+                <p className="text-lg font-bold text-gray-800 mt-1">
+                  {loading ? '...' : `${counts[type] || 0} / ${FREE_QUOTA}`}
+                </p>
+                <p className="text-xs text-gray-400">used this year ({currentYear})</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Vehicle Type */}
+          <div>
+            <label className="label">Vehicle Type *</label>
+            <div className="flex gap-3">
+              {['2W', '4W'].map(t => (
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="vehicle_type" value={t}
+                    checked={form.vehicle_type === t}
+                    onChange={() => setForm({ ...form, vehicle_type: t })} />
+                  <span className="text-sm font-medium">{t === '2W' ? 'Two Wheeler' : 'Four Wheeler'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Make / Brand *</label>
+            <input className="input" value={form.vehicle_make}
+              onChange={e => setForm({ ...form, vehicle_make: e.target.value })}
+              placeholder="e.g. MARUTI SWIFT, HONDA ACTIVA" />
+          </div>
+
+          <div>
+            <label className="label">Vehicle Number *</label>
+            <input className="input" value={form.vehicle_no}
+              onChange={e => setForm({ ...form, vehicle_no: e.target.value })}
+              placeholder="e.g. DL 4C AB 1234" />
+          </div>
+
+          {/* Fee Status */}
+          {!loading && (
+            isWithinQuota ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700 font-medium">
+                ✅ FREE — Within annual quota ({usedCount + 1}/{FREE_QUOTA})
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-sm text-amber-800 font-medium">
+                  ⚠️ Quota exceeded — ₹{FEE_PER_STICKER} fee applicable
+                </p>
+                <div className="mt-2">
+                  <label className="label text-xs">Payment Mode</label>
+                  <select className="input" value={form.payment_mode}
+                    onChange={e => setForm({ ...form, payment_mode: e.target.value })}>
+                    <option value="cash">Cash</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="upi">UPI</option>
+                    <option value="neft">NEFT</option>
+                  </select>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving || loading} className="btn-primary">
+            {saving ? 'Saving...' : feeRequired > 0 ? `Collect ₹${feeRequired} & Add` : 'Add Sticker (Free)'}
+          </button>
         </div>
       </div>
     </div>

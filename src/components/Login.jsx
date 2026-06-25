@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
 import { Lock, Mail } from 'lucide-react'
 
-const DCBA_LOGO = 'https://www.dwarkacourtbarassociation.com/images/logo.png'
+const DCBA_LOGO = 'https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/assets/dcba-logo.jpeg'
 
 const COMMITTEE = [
   { name: 'AVNISH RANA', designation: 'PRESIDENT' },

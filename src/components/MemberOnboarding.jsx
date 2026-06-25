@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
 import { UserPlus, Upload, FileText, CheckCircle, Printer, Phone, Info, AlertCircle } from 'lucide-react'
 
-const DCBA_LOGO = 'https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/assets/dcba-logo.jpg'
+const DCBA_LOGO = 'https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/assets/dcba-logo.jpeg'
 
 export default function MemberOnboarding() {
   const [step, setStep] = useState(0) // 0=notes, 1=verify, 2=form, 3=preview, 4=done

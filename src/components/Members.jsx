@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import toast from 'react-hot-toast'
-import { Users, Plus, Search, Eye, IndianRupee, CreditCard, AlertCircle, CheckCircle, Printer, Edit, Download } from 'lucide-react'
+import { Users, Plus, Search, Eye, IndianRupee, CreditCard, AlertCircle, CheckCircle, Printer, Edit, Download, Upload } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import MemberReceiptPrint from './members/MemberReceiptPrint'
 
@@ -60,6 +60,7 @@ export default function Members() {
   const [showDetailModal, setShowDetailModal] = useState(null)
   const [showReactivation, setShowReactivation] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
+  const [showBulkImport, setShowBulkImport] = useState(false)
   const [stats, setStats] = useState({ total: 0, active: 0, feeDue: 0, newThisMonth: 0 })
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 50
@@ -150,9 +151,16 @@ export default function Members() {
           <p className="text-gray-500 text-sm mt-1">{currentOrg?.name}</p>
         </div>
         {isCashier && (
-          <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> New Member
-          </button>
+          <div className="flex gap-2">
+            {isAdmin && (
+              <button onClick={() => setShowBulkImport(true)} className="btn-secondary flex items-center gap-2">
+                <Upload className="w-4 h-4" /> Bulk Import
+              </button>
+            )}
+            <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> New Member
+            </button>
+          </div>
         )}
       </div>
 
@@ -356,6 +364,13 @@ export default function Members() {
           onClose={() => setShowDetailModal(null)}
           org={currentOrg}
           userRole={userRole}
+        />
+      )}
+      {showBulkImport && (
+        <BulkImportModal
+          org={currentOrg}
+          onClose={() => setShowBulkImport(false)}
+          onSuccess={() => { setShowBulkImport(false); fetchMembers(0) }}
         />
       )}
       {showReactivation && (
@@ -1849,6 +1864,133 @@ function VehicleStickerModal({ member, org, onClose }) {
           <button onClick={handleSubmit} disabled={saving || loading} className="btn-primary">
             {saving ? 'Saving...' : feeRequired > 0 ? `Collect ₹${feeRequired} & Add` : 'Add Sticker (Free)'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- BULK IMPORT MODAL ----
+function BulkImportModal({ org, onClose, onSuccess }) {
+  const [file, setFile] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [results, setResults] = useState(null)
+
+  async function handleImport() {
+    if (!file) return toast.error('Select Excel file first')
+    setImporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const data = await file.arrayBuffer()
+      const wb = XLSX.read(data)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
+      let success = 0, failed = 0, errors = []
+
+      // Process in batches of 500
+      const BATCH = 500
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH).map(row => ({
+          org_id: org.id,
+          member_no: String(row['Member No.'] || '').trim(),
+          member_name: String(row['Member Name'] || '').trim().toUpperCase(),
+          father_name: String(row['Father/Husband Name'] || '').trim().toUpperCase(),
+          enrollment_no: String(row['Enrollment No.'] || '').trim(),
+          membership_date: row['Date of Membership'] || null,
+          dob: row['Date of Birth'] || null,
+          mobile: String(row['Mobile'] || '').trim(),
+          email: String(row['Email'] || '').trim().toLowerCase() || null,
+          address: String(row['Residential Address'] || '').trim(),
+          office: String(row['Office Address'] || '').trim(),
+          chamber: String(row['Chamber'] || '').trim(),
+          outstanding_fees: parseFloat(String(row['Outstanding Fees'] || '0').replace(/,/g, '')) || 0,
+          status: String(row['Status'] || 'active').trim().toLowerCase(),
+        })).filter(r => r.member_no && r.member_name)
+
+        const { error } = await supabase.from('dcba_members').upsert(batch, {
+          onConflict: 'org_id,member_no',
+          ignoreDuplicates: false
+        })
+
+        if (error) {
+          errors.push(error.message)
+          failed += batch.length
+        } else {
+          success += batch.length
+        }
+      }
+
+      setResults({ success, failed, errors, total: rows.length })
+      if (success > 0) toast.success(`${success} members imported!`)
+    } catch (err) {
+      toast.error(err.message)
+    }
+    setImporting(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Upload className="w-5 h-5 text-blue-700" /> Bulk Import Members
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {!results ? (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+                <p className="font-semibold mb-1">Excel format required:</p>
+                <p>Member No. | Member Name | Father/Husband Name | Enrollment No. | Date of Membership | Date of Birth | Mobile | Email | Residential Address | Office Address | Chamber | Outstanding Fees | Status</p>
+              </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
+                {file ? (
+                  <div>
+                    <p className="text-green-600 font-medium">✅ {file.name}</p>
+                    <p className="text-xs text-gray-400 mt-1">{(file.size/1024/1024).toFixed(1)} MB</p>
+                  </div>
+                ) : (
+                  <div>
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Select Excel file (.xlsx)</p>
+                  </div>
+                )}
+                <label className="btn-secondary mt-3 inline-block cursor-pointer">
+                  Browse File
+                  <input type="file" accept=".xlsx,.xls" className="hidden"
+                    onChange={e => setFile(e.target.files[0])} />
+                </label>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={onClose} className="btn-secondary">Cancel</button>
+                <button onClick={handleImport} disabled={!file || importing}
+                  className="btn-primary flex items-center gap-2">
+                  {importing ? '⏳ Importing...' : '🚀 Import Members'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div>
+              <div className={`rounded-xl p-4 mb-4 ${results.failed === 0 ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                <p className="font-bold text-lg">Import Complete!</p>
+                <p className="text-sm mt-1">✅ Success: <strong>{results.success}</strong> members</p>
+                {results.failed > 0 && <p className="text-sm">❌ Failed: <strong>{results.failed}</strong></p>}
+                <p className="text-sm text-gray-500">Total rows: {results.total}</p>
+                {results.errors.length > 0 && (
+                  <p className="text-xs text-red-600 mt-2">{results.errors[0]}</p>
+                )}
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={onClose} className="btn-secondary">Close</button>
+                {results.success > 0 && (
+                  <button onClick={onSuccess} className="btn-primary">View Members</button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

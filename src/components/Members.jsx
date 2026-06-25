@@ -32,7 +32,7 @@ function formatDate(dateStr) {
 
 function generateMemberNo(name, serial) {
   const firstLetter = name.trim().charAt(0).toUpperCase()
-  return `${firstLetter}-${String(serial).padStart(3, '0')}`
+  return `${firstLetter}-${serial}`
 }
 
 function getAnniversaryStatus(membershipDate) {
@@ -59,6 +59,7 @@ export default function Members() {
   const [showPayModal, setShowPayModal] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(null)
   const [showReactivation, setShowReactivation] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
   const [stats, setStats] = useState({ total: 0, active: 0, feeDue: 0, newThisMonth: 0 })
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 50
@@ -422,7 +423,7 @@ function AddMemberModal({ org, onClose, onSuccess, members }) {
         if (serials.length > 0) nextSerial = Math.max(...serials) + 1
       }
 
-      const memberNo = `${letter}-${String(nextSerial).padStart(4, '0')}`
+      const memberNo = `${letter}-${nextSerial}`
 
       // Calculate initial outstanding
       const outstanding = ADMISSION_FEE + ANNUAL_FEE + (form.icard_issued ? ICARD_FEE : 0)

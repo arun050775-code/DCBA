@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import { Building2, Users, TrendingUp, AlertCircle } from 'lucide-react'
 
-const DCBA_LOGO = 'https://www.dwarkacourtbarassociation.com/images/logo.png'
+const DCBA_LOGO = 'https://xalbjrmridjgdpguobdx.supabase.co/storage/v1/object/public/assets/dcba-logo.jpg'
 
 const COMMITTEE = [
   { name: 'AVNISH RANA', designation: 'PRESIDENT' },

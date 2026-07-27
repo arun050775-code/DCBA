@@ -40,6 +40,7 @@ export default function RentTracker() {
   const isAdmin = ['admin','cashier','supervisor','accountant'].includes(userRole?.role)
   const isAdminOnly = userRole?.role === 'admin'
   const [showImport, setShowImport] = useState(false)
+  const [drillDown, setDrillDown] = useState(null)
   const canCollect = ['admin','cashier','supervisor'].includes(userRole?.role)
   const isCashier = ['admin','cashier','supervisor'].includes(userRole?.role)
 
@@ -148,17 +149,19 @@ export default function RentTracker() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Active Vendors', value: activeVendors.length, color: 'blue', icon: Building2 },
-          { label: 'Monthly Rent Roll', value: `₹${totalMonthlyRent.toLocaleString('en-IN')}`, color: 'green', icon: IndianRupee },
-          { label: 'Total Outstanding', value: `₹${totalOutstanding.toLocaleString('en-IN')}`, color: 'red', icon: AlertCircle },
-          { label: 'High Arrears (24k+)', value: highArrears, color: 'orange', icon: XCircle },
+          { label: 'Active Vendors', value: activeVendors.length, color: 'blue', icon: Building2, filter: null },
+          { label: 'Monthly Rent Roll', value: `₹${totalMonthlyRent.toLocaleString('en-IN')}`, color: 'green', icon: IndianRupee, filter: 'active' },
+          { label: 'Total Outstanding', value: `₹${totalOutstanding.toLocaleString('en-IN')}`, color: 'red', icon: AlertCircle, filter: 'outstanding' },
+          { label: 'High Arrears (24k+)', value: highArrears, color: 'orange', icon: XCircle, filter: 'higharrears' },
         ].map(s => {
           const Icon = s.icon
           const colors = { blue:'bg-blue-50 border-blue-200 text-blue-700', green:'bg-green-50 border-green-200 text-green-700', red:'bg-red-50 border-red-200 text-red-700', orange:'bg-orange-50 border-orange-200 text-orange-700' }
           return (
-            <div key={s.label} className={`rounded-xl border p-4 ${colors[s.color]}`}>
+            <div key={s.label}
+              className={`rounded-xl border p-4 ${colors[s.color]} ${s.filter ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+              onClick={s.filter ? () => setDrillDown({ title: s.label, filter: s.filter }) : undefined}>
               <Icon className="w-5 h-5 mb-2 opacity-70" />
-              <p className="text-xl font-bold">{s.value}</p>
+              <p className="text-xl font-bold">{s.value}{s.filter ? ' 🔍' : ''}</p>
               <p className="text-xs font-medium opacity-80 mt-0.5">{s.label}</p>
             </div>
           )
@@ -324,6 +327,15 @@ export default function RentTracker() {
           org={currentOrg}
           onClose={() => setShowImport(false)}
           onSuccess={() => { setShowImport(false); fetchData() }}
+        />
+      )}
+      {drillDown && (
+        <RentDrillModal
+          title={drillDown.title}
+          filter={drillDown.filter}
+          vendors={vendors}
+          activeVendors={activeVendors}
+          onClose={() => setDrillDown(null)}
         />
       )}
     </div>
@@ -553,6 +565,81 @@ function VendorBulkImport({ org, onClose, onSuccess }) {
             </div>
           )}
           {step === 3 && <button onClick={onSuccess} className="btn-primary">✓ Done</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- RENT DRILL DOWN MODAL ----
+function RentDrillModal({ title, filter, vendors, activeVendors, onClose }) {
+  const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN')
+
+  const rows = (() => {
+    if (filter === 'active') return activeVendors.map(v => ({
+      name: v.name, category: v.vendor_categories?.name || '—',
+      monthlyRent: v.monthly_rent, outstanding: v.outstanding_balance || 0, status: v.status
+    }))
+    if (filter === 'outstanding') return vendors.filter(v => (v.outstanding_balance || 0) > 0).map(v => ({
+      name: v.name, category: v.vendor_categories?.name || '—',
+      monthlyRent: v.monthly_rent, outstanding: v.outstanding_balance || 0, status: v.status
+    }))
+    if (filter === 'higharrears') return vendors.filter(v => (v.outstanding_balance || 0) >= 24000).map(v => ({
+      name: v.name, category: v.vendor_categories?.name || '—',
+      monthlyRent: v.monthly_rent, outstanding: v.outstanding_balance || 0, status: v.status
+    }))
+    return []
+  })()
+
+  const totalRent = rows.reduce((s, r) => s + Number(r.monthlyRent || 0), 0)
+  const totalOutstanding = rows.reduce((s, r) => s + Number(r.outstanding || 0), 0)
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <div>
+            <h3 className="text-lg font-bold text-blue-800">🔍 {title}</h3>
+            <p className="text-sm text-gray-500">{rows.length} vendors</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-xl">✕</button>
+        </div>
+        <div className="overflow-auto flex-1">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">#</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Vendor Name</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Category</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Monthly Rent</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Outstanding</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-b hover:bg-gray-50">
+                  <td className="px-3 py-2 text-xs text-gray-400">{i+1}</td>
+                  <td className="px-3 py-2 font-medium text-gray-800">{r.name}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{r.category}</td>
+                  <td className="px-3 py-2 text-right text-sm">{fmt(r.monthlyRent)}</td>
+                  <td className={`px-3 py-2 text-right font-medium text-sm ${r.outstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>{r.outstanding > 0 ? fmt(r.outstanding) : '✓ Clear'}</td>
+                  <td className="px-3 py-2 text-xs capitalize">{r.status}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-100 sticky bottom-0">
+              <tr>
+                <td colSpan={3} className="px-3 py-2 font-bold text-right">TOTAL</td>
+                <td className="px-3 py-2 font-bold text-right text-green-700">{fmt(totalRent)}</td>
+                <td className="px-3 py-2 font-bold text-right text-red-700">{fmt(totalOutstanding)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="px-6 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
     </div>

@@ -87,10 +87,10 @@ export default function Reports() {
     const { startDate, endDate, label } = range
 
     const [{ data: rent }, { data: income }, { data: expenditure }, { data: memberFees }] = await Promise.all([
-      supabase.from('rent_collections').select('amount, vendors(vendor_categories(name))').eq('org_id', currentOrg.id).gte('collection_date', startDate).lte('collection_date', endDate),
-      supabase.from('income_entries').select('amount, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate),
-      supabase.from('expenditure_entries').select('amount, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate).eq('is_posted', true),
-      supabase.from('dcba_member_fees').select('amount, fee_type, payment_mode').eq('org_id', currentOrg.id).gte('payment_date', startDate).lte('payment_date', endDate),
+      supabase.from('rent_collections').select('amount, collection_date, receipt_no, remarks, vendors(name, vendor_categories(name))').eq('org_id', currentOrg.id).gte('collection_date', startDate).lte('collection_date', endDate),
+      supabase.from('income_entries').select('amount, entry_date, receipt_no, description, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate),
+      supabase.from('expenditure_entries').select('amount, entry_date, voucher_no, description, account_heads(name), account_sub_heads(name)').eq('org_id', currentOrg.id).gte('entry_date', startDate).lte('entry_date', endDate).eq('is_posted', true),
+      supabase.from('dcba_member_fees').select('amount, payment_date, receipt_no, fee_type, payment_mode, dcba_members(member_name, member_no)').eq('org_id', currentOrg.id).gte('payment_date', startDate).lte('payment_date', endDate),
     ])
 
     // Build income summary
@@ -192,7 +192,7 @@ export default function Reports() {
     const totalExp = Object.values(expMap).reduce((s, v) => s + v.total, 0)
     const surplus = totalIncome - totalExp
 
-    setReportData({ type: 'ie', incomeMap, expMap, totalIncome, totalExp, surplus, label })
+    setReportData({ type: 'ie', incomeMap, expMap, totalIncome, totalExp, surplus, label, rawIncome: income || [], rawExp: expenditure || [], rawRent: rent || [], rawFees: memberFees || [] })
   }
 
   // ---- VENDOR REPORT ----
@@ -696,7 +696,49 @@ export default function Reports() {
 // ---- SUB COMPONENTS ----
 
 function IEReport({ data, orgName, fmt }) {
-  const { incomeMap, expMap, totalIncome, totalExp, surplus, label } = data
+  const { incomeMap, expMap, totalIncome, totalExp, surplus, label, rawIncome, rawExp, rawRent, rawFees } = data
+  const [drillDown, setDrillDown] = useState(null) // { title, entries }
+
+  function getIncomeEntries(head) {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmtD = d => { if(!d) return '—'; const dt = new Date(d); return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}` }
+    const entries = []
+
+    // Rent entries
+    if (head === 'Rental Income') {
+      ;(rawRent || []).forEach(r => {
+        entries.push({ date: fmtD(r.collection_date), ref: r.receipt_no || '—', narration: r.vendors?.name || 'Vendor', amount: Number(r.amount) })
+      })
+    }
+    // Member fee entries
+    const feeTypeToHead = { annual: 'Annual Subscription', admission: 'Admission Fee', icard: 'I-Card Fee' }
+    ;(rawFees || []).forEach(f => {
+      if ((feeTypeToHead[f.fee_type] || 'Others') === head) {
+        entries.push({ date: fmtD(f.payment_date), ref: f.receipt_no || '—', narration: `${f.dcba_members?.member_name || ''} (${f.dcba_members?.member_no || ''}) — ${f.fee_type}`, amount: Number(f.amount) })
+      }
+    })
+    // Income entries
+    ;(rawIncome || []).forEach(e => {
+      const h = e.account_heads?.name || 'Miscellaneous Income'
+      if (h === head) {
+        entries.push({ date: fmtD(e.entry_date), ref: e.receipt_no || '—', narration: e.description || '—', amount: Number(e.amount) })
+      }
+    })
+    return entries
+  }
+
+  function getExpEntries(head) {
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const fmtD = d => { if(!d) return '—'; const dt = new Date(d); return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}` }
+    const entries = []
+    ;(rawExp || []).forEach(e => {
+      const h = e.account_heads?.name || 'Miscellaneous'
+      if (h === head) {
+        entries.push({ date: fmtD(e.entry_date), ref: e.voucher_no || '—', narration: e.description || '—', amount: Number(e.amount) })
+      }
+    })
+    return entries
+  }
 
   function handleExcelIE() {
     const wb = XLSX.utils.book_new()
@@ -751,6 +793,7 @@ function IEReport({ data, orgName, fmt }) {
   }
 
   return (
+    <>
     <div>
       {/* Action buttons */}
       <div className="flex justify-end gap-2 mb-4 no-print">
@@ -784,9 +827,10 @@ function IEReport({ data, orgName, fmt }) {
                     <span className="font-medium">{fmt(amt)}</span>
                   </div>
                 ))}
-                <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200">
+                <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-red-50 group no-print"
+                  onClick={() => setDrillDown({ title: `Expenditure — ${head}`, entries: getExpEntries(head), type: 'exp' })}>
                   <span>Total {head}</span>
-                  <span>{fmt(d.total)}</span>
+                  <span className="text-red-700 underline decoration-dotted group-hover:text-red-900">{fmt(d.total)} 🔍</span>
                 </div>
               </div>
             ))}
@@ -817,9 +861,10 @@ function IEReport({ data, orgName, fmt }) {
                     <span className="font-medium">{fmt(amt)}</span>
                   </div>
                 ))}
-                <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200">
+                <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-green-50 group no-print"
+                  onClick={() => setDrillDown({ title: `Income — ${head}`, entries: getIncomeEntries(head), type: 'income' })}>
                   <span>Total {head}</span>
-                  <span>{fmt(d.total)}</span>
+                  <span className="text-green-700 underline decoration-dotted group-hover:text-green-900">{fmt(d.total)} 🔍</span>
                 </div>
               </div>
             ))}
@@ -847,6 +892,95 @@ function IEReport({ data, orgName, fmt }) {
             <span>TOTAL INCOME</span>
             <span>{fmt(totalIncome)}</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Drill-down modal */}
+    {drillDown && (
+      <DrillDownModal
+        title={drillDown.title}
+        entries={drillDown.entries}
+        type={drillDown.type}
+        fmt={fmt}
+        onClose={() => setDrillDown(null)}
+      />
+    )}
+  </>
+  )
+}
+
+// ---- DRILL DOWN MODAL ----
+function DrillDownModal({ title, entries, type, fmt, onClose }) {
+  const total = entries.reduce((s, e) => s + e.amount, 0)
+  const color = type === 'exp' ? 'red' : 'green'
+
+  function exportExcel() {
+    const XLSX = window.XLSX || require('xlsx')
+    const rows = [
+      [title],
+      ['Date', 'Reference No.', 'Narration', 'Amount (₹)'],
+      ...entries.map(e => [e.date, e.ref, e.narration, e.amount]),
+      [],
+      ['', '', 'TOTAL', total],
+    ]
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 50 }, { wch: 15 }]
+    XLSX.utils.book_append_sheet(wb, ws, 'Detail')
+    XLSX.writeFile(wb, `${title.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+        <div className={`flex items-center justify-between px-6 py-4 border-b bg-${color}-50`}>
+          <div>
+            <h3 className={`text-lg font-bold text-${color}-800`}>🔍 {title}</h3>
+            <p className="text-sm text-gray-500">{entries.length} entries · Total: {fmt(total)}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={exportExcel}
+              className="btn-secondary text-xs flex items-center gap-1">
+              <Download className="w-3.5 h-3.5" /> Excel
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">✕</button>
+          </div>
+        </div>
+
+        <div className="overflow-auto flex-1">
+          {entries.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">No entries found</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">#</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Date</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Reference</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Narration</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((e, i) => (
+                  <tr key={i} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
+                    <td className="px-4 py-2 text-xs font-mono">{e.date}</td>
+                    <td className="px-4 py-2 text-xs text-blue-700 font-medium">{e.ref}</td>
+                    <td className="px-4 py-2 text-xs text-gray-600">{e.narration}</td>
+                    <td className="px-4 py-2 text-right font-medium text-gray-800">{fmt(e.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-100 sticky bottom-0">
+                <tr>
+                  <td colSpan={4} className="px-4 py-2 font-bold text-right">TOTAL</td>
+                  <td className={`px-4 py-2 font-bold text-right text-${color}-700`}>{fmt(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
       </div>
     </div>

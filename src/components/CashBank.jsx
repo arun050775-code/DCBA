@@ -28,6 +28,7 @@ export default function CashBank() {
   const [loading, setLoading] = useState(true)
   const [showEntryModal, setShowEntryModal] = useState(null)
   const [printVoucher, setPrintVoucher] = useState(null)
+  const [drillDown, setDrillDown] = useState(null)
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
   const [filterYear, setFilterYear] = useState(CURRENT_YEAR)
 
@@ -145,16 +146,18 @@ export default function CashBank() {
           {/* Summary */}
           <div className="grid grid-cols-4 gap-3 mb-4">
             {[
-              { label: 'Opening Balance', value: openingBal, color: 'blue' },
-              { label: 'Total Receipts', value: totalReceipts, color: 'green' },
-              { label: 'Total Payments', value: totalPayments, color: 'red' },
-              { label: 'Closing Balance', value: closingBalance, color: closingBalance >= 0 ? 'blue' : 'red' },
+              { label: 'Opening Balance', value: openingBal, color: 'blue', filter: null },
+              { label: 'Total Receipts', value: totalReceipts, color: 'green', filter: 'receipt' },
+              { label: 'Total Payments', value: totalPayments, color: 'red', filter: 'payment' },
+              { label: 'Closing Balance', value: closingBalance, color: closingBalance >= 0 ? 'blue' : 'red', filter: null },
             ].map(s => {
               const colors = { green:'bg-green-50 border-green-200 text-green-700', red:'bg-red-50 border-red-200 text-red-700', blue:'bg-blue-50 border-blue-200 text-blue-700' }
               return (
-                <div key={s.label} className={`rounded-xl border p-3 ${colors[s.color]}`}>
+                <div key={s.label}
+                  className={`rounded-xl border p-3 ${colors[s.color]} ${s.filter ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                  onClick={s.filter ? () => setDrillDown({ title: s.label, entries: transactions.filter(t => t.txn_type === s.filter) }) : undefined}>
                   <p className="text-base font-bold">₹{Math.abs(s.value).toLocaleString('en-IN')}</p>
-                  <p className="text-xs font-medium opacity-80 mt-0.5">{s.label}</p>
+                  <p className="text-xs font-medium opacity-80 mt-0.5">{s.label}{s.filter ? ' 🔍' : ''}</p>
                 </div>
               )
             })}
@@ -224,6 +227,13 @@ export default function CashBank() {
 
       {printVoucher && (
         <VoucherPrint voucher={printVoucher} org={currentOrg} userRole={userRole} onClose={() => setPrintVoucher(null)} />
+      )}
+      {drillDown && (
+        <CashBankDrillModal
+          title={drillDown.title}
+          entries={drillDown.entries}
+          onClose={() => setDrillDown(null)}
+        />
       )}
     </div>
   )
@@ -372,6 +382,63 @@ function EntryModal({ type, org, userRole, cashAccounts, bankAccounts, heads, su
             className={`${isPayment ? 'btn-danger' : 'btn-success'} flex items-center gap-2`}>
             {saving ? 'Saving...' : isPayment ? 'Save & Print Voucher' : 'Save Receipt'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- CASH BANK DRILL DOWN MODAL ----
+function CashBankDrillModal({ title, entries, onClose }) {
+  const total = entries.reduce((s, e) => s + Number(e.amount), 0)
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const fmtD = d => { if(!d) return '—'; const dt = new Date(d); return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}` }
+  const fmt = n => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2 })
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+          <div>
+            <h3 className="text-lg font-bold text-blue-800">🔍 {title}</h3>
+            <p className="text-sm text-gray-500">{entries.length} entries · Total: {fmt(total)}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-xl">✕</button>
+        </div>
+        <div className="overflow-auto flex-1">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">#</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Date</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Ref No.</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Description</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Mode</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={i} className="border-b hover:bg-gray-50">
+                  <td className="px-3 py-2 text-xs text-gray-400">{i+1}</td>
+                  <td className="px-3 py-2 text-xs font-mono">{fmtD(e.entry_date || e.txn_date)}</td>
+                  <td className="px-3 py-2 text-xs text-blue-700 font-medium">{e.reference_no || e.voucher_no || e.receipt_no || '—'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-600">{e.description || e.narration || '—'}</td>
+                  <td className="px-3 py-2 text-xs capitalize">{e.payment_mode || '—'}</td>
+                  <td className={`px-3 py-2 text-right font-medium text-sm ${e.txn_type === 'payment' ? 'text-red-600' : 'text-green-600'}`}>{fmt(e.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-100 sticky bottom-0">
+              <tr>
+                <td colSpan={5} className="px-3 py-2 font-bold text-right">TOTAL</td>
+                <td className="px-3 py-2 font-bold text-right text-blue-700">{fmt(total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="px-6 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
     </div>

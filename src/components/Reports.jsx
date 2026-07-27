@@ -699,42 +699,58 @@ function IEReport({ data, orgName, fmt }) {
   const { incomeMap, expMap, totalIncome, totalExp, surplus, label, rawIncome, rawExp, rawRent, rawFees } = data
   const [drillDown, setDrillDown] = useState(null) // { title, entries }
 
-  function getIncomeEntries(head) {
+  function getIncomeEntries(head, sub = null) {
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
     const fmtD = d => { if(!d) return '—'; const dt = new Date(d); return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}` }
     const entries = []
+    const feeTypeToHead = { annual: 'Annual Subscription', admission: 'Admission Fee', icard: 'I-Card Fee' }
 
     // Rent entries
     if (head === 'Rental Income') {
       ;(rawRent || []).forEach(r => {
-        entries.push({ date: fmtD(r.collection_date), ref: r.receipt_no || '—', narration: r.vendors?.name || 'Vendor', amount: Number(r.amount) })
+        const cat = r.vendors?.name || 'Vendor'
+        if (!sub || sub === cat || sub === (r.vendors?.vendor_categories?.name)) {
+          entries.push({ date: fmtD(r.collection_date), ref: r.receipt_no || '—', narration: r.vendors?.name || 'Vendor', amount: Number(r.amount) })
+        }
       })
     }
+
     // Member fee entries
-    const feeTypeToHead = { annual: 'Annual Subscription', admission: 'Admission Fee', icard: 'I-Card Fee' }
     ;(rawFees || []).forEach(f => {
-      if ((feeTypeToHead[f.fee_type] || 'Others') === head) {
-        entries.push({ date: fmtD(f.payment_date), ref: f.receipt_no || '—', narration: `${f.dcba_members?.member_name || ''} (${f.dcba_members?.member_no || ''}) — ${f.fee_type}`, amount: Number(f.amount) })
+      const h = feeTypeToHead[f.fee_type] || 'Others'
+      if (h === head) {
+        const mode = f.payment_mode === 'online' ? 'Online' : f.payment_mode === 'cash' ? 'Cash' : f.payment_mode?.toUpperCase() || 'Other'
+        if (!sub || sub === mode) {
+          entries.push({ date: fmtD(f.payment_date), ref: f.receipt_no || '—', narration: `${f.dcba_members?.member_name || ''} (${f.dcba_members?.member_no || ''}) — ${f.fee_type}`, amount: Number(f.amount) })
+        }
       }
     })
+
     // Income entries
     ;(rawIncome || []).forEach(e => {
       const h = e.account_heads?.name || 'Miscellaneous Income'
+      const s = e.account_sub_heads?.name || 'Cash/Cheque'
       if (h === head) {
-        entries.push({ date: fmtD(e.entry_date), ref: e.receipt_no || '—', narration: e.description || '—', amount: Number(e.amount) })
+        if (!sub || sub === s) {
+          entries.push({ date: fmtD(e.entry_date), ref: e.receipt_no || '—', narration: e.description || '—', amount: Number(e.amount) })
+        }
       }
     })
+
     return entries
   }
 
-  function getExpEntries(head) {
+  function getExpEntries(head, sub = null) {
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
     const fmtD = d => { if(!d) return '—'; const dt = new Date(d); return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}` }
     const entries = []
     ;(rawExp || []).forEach(e => {
       const h = e.account_heads?.name || 'Miscellaneous'
+      const s = e.account_sub_heads?.name || null
       if (h === head) {
-        entries.push({ date: fmtD(e.entry_date), ref: e.voucher_no || '—', narration: e.description || '—', amount: Number(e.amount) })
+        if (!sub || (s === sub) || (!s && sub === 'Cash/Cheque')) {
+          entries.push({ date: fmtD(e.entry_date), ref: e.voucher_no || '—', narration: e.description || '—', amount: Number(e.amount) })
+        }
       }
     })
     return entries
@@ -822,9 +838,10 @@ function IEReport({ data, orgName, fmt }) {
                   {head}
                 </div>
                 {Object.entries(d.subs).map(([sub, amt]) => (
-                  <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50">
-                    <span className="text-gray-600">{sub}</span>
-                    <span className="font-medium">{fmt(amt)}</span>
+                  <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50 cursor-pointer hover:bg-red-50 group no-print"
+                    onClick={() => setDrillDown({ title: `${head} — ${sub}`, entries: getExpEntries(head, sub), type: 'exp' })}>
+                    <span className="text-gray-600 group-hover:text-red-700">{sub}</span>
+                    <span className="font-medium text-red-600 underline decoration-dotted">{fmt(amt)} 🔍</span>
                   </div>
                 ))}
                 <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-red-50 group no-print"
@@ -856,9 +873,10 @@ function IEReport({ data, orgName, fmt }) {
                   {head}
                 </div>
                 {Object.entries(d.subs).map(([sub, amt]) => (
-                  <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50">
-                    <span className="text-gray-600">{sub}</span>
-                    <span className="font-medium">{fmt(amt)}</span>
+                  <div key={sub} className="flex justify-between px-6 py-1 text-xs border-b border-gray-50 cursor-pointer hover:bg-green-50 group no-print"
+                    onClick={() => setDrillDown({ title: `${head} — ${sub}`, entries: getIncomeEntries(head, sub), type: 'income' })}>
+                    <span className="text-gray-600 group-hover:text-green-700">{sub}</span>
+                    <span className="font-medium text-green-600 underline decoration-dotted">{fmt(amt)} 🔍</span>
                   </div>
                 ))}
                 <div className="flex justify-between px-4 py-1.5 text-sm font-bold bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-green-50 group no-print"

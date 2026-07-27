@@ -24,6 +24,7 @@ export default function ExpenditureRegister() {
   const [showEntry, setShowEntry] = useState(null)
   const [printVoucher, setPrintVoucher] = useState(null)
   const [postModal, setPostModal] = useState(null)
+  const [drillDown, setDrillDown] = useState(null)
   const [cashAccounts, setCashAccounts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
 
@@ -130,15 +131,17 @@ export default function ExpenditureRegister() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="col-span-2 lg:col-span-1 rounded-xl border bg-red-50 border-red-200 p-4">
+        <div className="col-span-2 lg:col-span-1 rounded-xl border bg-red-50 border-red-200 p-4 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => setDrillDown({ title: 'Total Expenditure', entries: filtered })}>
           <IndianRupee className="w-5 h-5 text-red-600 mb-1" />
-          <p className="text-2xl font-bold text-red-700">₹{totalExp.toLocaleString('en-IN')}</p>
+          <p className="text-2xl font-bold text-red-700">₹{totalExp.toLocaleString('en-IN')} 🔍</p>
           <p className="text-xs font-medium text-red-600">Total Expenditure</p>
           <p className="text-xs text-red-400">{MONTHS[filterMonth - 1]} {filterYear}</p>
         </div>
         {Object.entries(summary).slice(0, 3).map(([key, val]) => (
-          <div key={key} className="rounded-xl border bg-white border-gray-200 p-4">
-            <p className="text-lg font-bold text-gray-800">₹{Number(val).toLocaleString('en-IN')}</p>
+          <div key={key} className="rounded-xl border bg-white border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setDrillDown({ title: `Expenditure — ${key}`, entries: filtered.filter(e => (e.account_heads?.name || 'Uncategorised') === key) })}>
+            <p className="text-lg font-bold text-gray-800">₹{Number(val).toLocaleString('en-IN')} 🔍</p>
             <p className="text-xs font-medium text-gray-600 mt-1 truncate">{key}</p>
           </div>
         ))}
@@ -265,6 +268,13 @@ export default function ExpenditureRegister() {
           onSuccess={() => { setPostModal(null); fetchData() }}
         />
       )}
+      {drillDown && (
+        <ExpDrillModal
+          title={drillDown.title}
+          entries={drillDown.entries}
+          onClose={() => setDrillDown(null)}
+        />
+      )}
     </div>
   )
 }
@@ -377,6 +387,75 @@ function PostEntryModal({ entry, heads, subHeads, onClose, onSuccess }) {
             <CheckCircle className="w-4 h-4" />
             {saving ? 'Posting...' : 'Post Entry'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- EXPENDITURE DRILL DOWN MODAL ----
+function ExpDrillModal({ title, entries, onClose }) {
+  const total = entries.reduce((s, e) => s + Number(e.amount), 0)
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const fmtD = d => { if(!d) return '—'; const dt = new Date(d); return `${String(dt.getDate()).padStart(2,'0')}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}` }
+  const fmt = n => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2 })
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-red-50">
+          <div>
+            <h3 className="text-lg font-bold text-red-800">🔍 {title}</h3>
+            <p className="text-sm text-gray-500">{entries.length} entries · Total: {fmt(total)}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-xl">✕</button>
+        </div>
+        <div className="overflow-auto flex-1">
+          {entries.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">No entries found</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">#</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Date</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Voucher No.</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Head</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Description / Payee</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Mode</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">Status</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((e, i) => (
+                  <tr key={i} className="border-b hover:bg-gray-50">
+                    <td className="px-3 py-2 text-xs text-gray-400">{i+1}</td>
+                    <td className="px-3 py-2 text-xs font-mono">{fmtD(e.entry_date)}</td>
+                    <td className="px-3 py-2 text-xs text-blue-700 font-medium">{e.voucher_no || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{e.account_heads?.name || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{e.description || e.payee_name || '—'}</td>
+                    <td className="px-3 py-2 text-xs capitalize">{e.payment_mode || '—'}</td>
+                    <td className="px-3 py-2 text-center">
+                      {e.is_posted
+                        ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✅ Posted</span>
+                        : <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">⏳ Pending</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium text-red-700">{fmt(e.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-100 sticky bottom-0">
+                <tr>
+                  <td colSpan={7} className="px-3 py-2 font-bold text-right">TOTAL</td>
+                  <td className="px-3 py-2 font-bold text-right text-red-700">{fmt(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+        <div className="px-6 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
     </div>

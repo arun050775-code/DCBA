@@ -27,9 +27,9 @@ const ADMISSION_FEE = 600
 const ANNUAL_FEE = 600
 const ICARD_FEE = 50
 
-// Extract amount from description string e.g. "Admission Fee ₹600"
+// Extract amount from description string e.g. "Admission Fee ₹600" or "Admission: Rs.600"
 function extractAmount(str, keyword) {
-  const regex = new RegExp(keyword + '[^₹]*₹([\\d,]+)', 'i')
+  const regex = new RegExp(keyword + '[^₹Rs\\.0-9]*(?:Rs\\.?|₹)\\s*([\\d,]+)', 'i')
   const m = str.match(regex)
   return m ? parseInt(m[1].replace(',','')) : 0
 }
